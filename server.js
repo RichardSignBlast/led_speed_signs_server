@@ -34,7 +34,20 @@ const pool = mysql.createPool({
 
 // Handle save preset request
 app.post('/api/save', (req, res) => {
-    const { username, password } = req.body;
+    console.log(req.body);
+    const {
+        currentPreset, minSpeed, thresholdSpeed, maxSpeed, 
+        belowThresholdProgramNumber,belowThresholdProgramImage, belowThresholdProgramBoth,
+        belowThresholdColorRed, belowThresholdColorGreen,
+        belowThresholdTimers1, belowThresholdTimers2, belowThresholdImage,
+        aboveThresholdProgramNumber,aboveThresholdProgramImage, aboveThresholdProgramBoth,
+        aboveThresholdColorRed, aboveThresholdColorGreen,
+        aboveThresholdTimers1, aboveThresholdTimers2, aboveThresholdImage,
+        radarDirection, radarDigit, radarSensitivity, radarHold,
+        monthSchedule, weekSchedule,
+        jan, feb, mar, apr, may, jun, jul, aug, sep, oct, nov, dec,
+        mon, tue, wed, thu, fri, sat, sun, timeStart, timeEnd
+      } = req.body;
 
     // Use pool.getConnection() to get a connection from the pool
     pool.getConnection((err, connection) => {
@@ -44,7 +57,9 @@ app.post('/api/save', (req, res) => {
         }
 
         // Perform the query to check username and password
-        connection.query('SELECT * FROM users WHERE username = ? AND pwd = ?', [username, password], (err, results) => {
+        connection.query("UPDATE presets SET minSpeed = ? AND thresholdSpeed = ? AND maxSpeed = ? WHERE presetid = ?",
+            [minSpeed, thresholdSpeed, maxSpeed, currentPreset],
+            (err, results) => {
             connection.release(); // Release the connection back to the pool
 
             if (err) {
@@ -53,12 +68,8 @@ app.post('/api/save', (req, res) => {
             }
 
             if (results.length > 0) {
-                // User found, return success response with user data
-                const user = results[0];
                 res.status(200).json({
-                    message: 'Login successful',
-                    username: user.username,
-                    company: user.company
+                    message: 'Save successful'
                 });
             } else {
                 // No user found with given credentials
@@ -96,7 +107,7 @@ app.get('/api/presets', (req, res) => {
             res.status(200).json({ devices: results });
         });
     });
-});
+}); 
 
 // Endpoint to fetch devices based on username
 app.get('/api/devices', (req, res) => {
