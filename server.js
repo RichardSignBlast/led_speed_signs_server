@@ -32,6 +32,69 @@ const pool = mysql.createPool({
     // }
 });
 
+// Handle device info update
+app.post('/api/update_device', (req, res) => {
+    const { username, devices } = req.body;
+
+    if (!username || !devices || !Array.isArray(devices)) {
+        return res.status(400).json({ error: 'Invalid request' });
+    }
+
+    // Use pool.getConnection() to get a connection from the pool
+    pool.getConnection((err, connection) => {
+        if (err) {
+            console.error('Error getting MySQL connection: ', err);
+            return res.status(500).json({ error: 'Database error' });
+        }
+
+        // Begin transaction to update devices
+        connection.beginTransaction((err) => {
+            if (err) {
+                console.error('Error beginning transaction: ', err);
+                return res.status(500).json({ error: 'Database error' });
+            }
+
+            // Prepare SQL statements to update each device
+            const updatePromises = devices.map(device => {
+                return new Promise((resolve, reject) => {
+                    connection.query('UPDATE devices SET label = ?, note = ?, lat = ?, lon = ? WHERE id = ?',
+                        [device.label, device.note, device.lat, device.lon, device.id],
+                        (err, result) => {
+                            if (err) {
+                                return reject(err);
+                            }
+                            resolve(result);
+                        }
+                    );
+                });
+            });
+
+            // Execute all update queries
+            Promise.all(updatePromises)
+                .then(() => {
+                    connection.commit((err) => {
+                        if (err) {
+                            console.error('Error committing transaction: ', err);
+                            return connection.rollback(() => {
+                                res.status(500).json({ error: 'Database error' });
+                            });
+                        }
+                        res.status(200).json({ message: 'Devices updated successfully' });
+                    });
+                })
+                .catch((err) => {
+                    console.error('Error updating devices: ', err);
+                    connection.rollback(() => {
+                        res.status(500).json({ error: 'Database error' });
+                    });
+                })
+                .finally(() => {
+                    connection.release(); // Release the connection back to the pool
+                });
+        });
+    });
+});
+
 // Handle save preset request
 app.post('/api/save', (req, res) => {
     // console.log(req.body);
