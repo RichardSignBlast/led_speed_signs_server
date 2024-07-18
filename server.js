@@ -27,14 +27,14 @@ const pool = mysql.createPool({
     password: 'Aloha#2024',
     database: 'led_speed_signs',
     port: 3306,
-    ssl: {
-        ca: fs.readFileSync("DigiCertGlobalRootCA.crt.pem")
-    }
+    // ssl: {
+    //     ca: fs.readFileSync("DigiCertGlobalRootCA.crt.pem")
+    // }
 });
 
 // Handle save preset request
 app.post('/api/save', (req, res) => {
-    console.log(req.body);
+    // console.log(req.body);
     const {
         currentPreset, minSpeed, thresholdSpeed, maxSpeed, 
         belowThresholdProgramNumber,belowThresholdProgramImage, belowThresholdProgramBoth,
@@ -49,6 +49,39 @@ app.post('/api/save', (req, res) => {
         mon, tue, wed, thu, fri, sat, sun, timeStart, timeEnd
       } = req.body;
 
+    // Format parameters for sql update
+    let belowThresholdProgram = -1;
+    if (belowThresholdProgramNumber) {
+        belowThresholdProgram = 0;
+    } else if (belowThresholdProgramImage) {
+        belowThresholdProgram = 1;
+    } else if (belowThresholdProgramBoth) {
+        belowThresholdProgram = 2;
+    }
+
+    let belowThresholdColor = -1;
+    if (belowThresholdColorRed) {
+        belowThresholdColor = 0;
+    } else if (belowThresholdColorGreen) {
+        belowThresholdColor = 1;
+    }
+
+    let aboveThresholdProgram = -1;
+    if (aboveThresholdProgramNumber) {
+        aboveThresholdProgram = 0;
+    } else if (aboveThresholdProgramImage) {
+        aboveThresholdProgram = 1;
+    } else if (aboveThresholdProgramBoth) {
+        aboveThresholdProgram = 2;
+    }
+
+    let aboveThresholdColor = -1;
+    if (aboveThresholdColorRed) {
+        aboveThresholdColor = 0;
+    } else if (aboveThresholdColorGreen) {
+        aboveThresholdColor = 1;
+    }
+
     // Use pool.getConnection() to get a connection from the pool
     pool.getConnection((err, connection) => {
         if (err) {
@@ -57,23 +90,18 @@ app.post('/api/save', (req, res) => {
         }
 
         // Perform the query to check username and password
-        connection.query("UPDATE presets SET minSpeed = ? AND thresholdSpeed = ? AND maxSpeed = ? WHERE presetid = ?",
-            [minSpeed, thresholdSpeed, maxSpeed, currentPreset],
+        connection.query("UPDATE presets SET minSpeed = ?, thresholdSpeed = ?, maxSpeed = ?, belowProgram = ?, belowColor = ?, belowTimer1 = ?, belowTimer2 = ?, belowContent = ?, overProgram = ?, overColor = ?, overTimer1 = ?, overTimer2 = ?, overContent = ?, radarDirection = ?, radardigit = ?, sensitivity = ?, hold = ?, timePeriodMonth = ?, timePeriodWeek = ?, monthJan = ?, monthFeb = ?, monthMar = ?, monthApr = ?, monthMay = ?, monthJun = ?, monthJul = ?, monthAug = ?, monthSep = ?, monthOct = ?, monthNov = ?, monthDec = ?, weekMon = ?, weekTue = ?, weekWed = ?, weekThu = ?, weekFri = ?, weekSat = ?, weekSun = ?, timeStart = ?, timeEnd = ? WHERE presetid = ?",
+            [minSpeed, thresholdSpeed, maxSpeed, belowThresholdProgram, belowThresholdColor, belowThresholdTimers1, belowThresholdTimers2, belowThresholdImage, aboveThresholdProgram, aboveThresholdColor, aboveThresholdTimers1, aboveThresholdTimers2, aboveThresholdImage, radarDirection, radarDigit, radarSensitivity, radarHold, weekSchedule, monthSchedule, jan, feb, mar, apr, may, jun, jul, aug, sep, oct, nov, dec, mon, tue, wed, thu, fri, sat, sun, timeStart, timeEnd, currentPreset],
             (err, results) => {
             connection.release(); // Release the connection back to the pool
-
             if (err) {
+                console.log('if error')
                 console.error('Error querying database: ', err);
                 return res.status(500).json({ error: 'Database error' });
-            }
-
-            if (results.length > 0) {
+            } else {
                 res.status(200).json({
                     message: 'Save successful'
                 });
-            } else {
-                // No user found with given credentials
-                res.status(401).json({ error: 'Invalid credentials' });
             }
         });
     });
