@@ -5,14 +5,6 @@ const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
 
-  /*
-
-  for the scroll section, we want to use the devices in devices table to replace
-  the ones from presets.json that we are currently using, the username for devices
-  is the same username from login, display the devices with matching 
-
-  */
-
 const app = express();
 const port = process.env.PORT || 3001;
 
@@ -31,6 +23,8 @@ const pool = mysql.createPool({
     //     ca: fs.readFileSync("DigiCertGlobalRootCA.crt.pem")
     // }
 });
+
+// Henzkey server: 47.92.140.117, port: 9820
 
 // Handle device info update
 app.post('/api/update_device', (req, res) => {
