@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
 const net = require('net');
+const udp = require('dgram');
 
 const app = express();
 const port = 3001;
@@ -46,7 +47,8 @@ app.post('/api/push_update', (req, res) => {
       console.log(req.body);
       
       // Establish a TCP connection to the server
-    const client = net.createConnection({ host: serverHost, port: serverPort }, () => {
+    /*
+    const client = udp.createConnection({ host: serverHost, port: serverPort }, () => {
         console.log('Connected to Henzkey server');
         
         // Send the hex message
@@ -54,26 +56,41 @@ app.post('/api/push_update', (req, res) => {
         const hexMessage = '7E 7E A0 11 01 00 02 14 A2 00 01 01 01 01 01 01 21 0F 09 00 00 00 00 EF EF';
 
         client.write(hexMessage);
-        console.log('Message sent: ', hexMessage)
+        console.log('Message sent: ', hexMessage);
         const hexBuffer = Buffer.from(hexMessage1, 'hex');
         client.write(hexBuffer);
         console.log('Message sent: ', hexBuffer);
+        client.write(hexMessage1);
+        console.log('Message sent: ', hexMessage1);
         
     });
+    */
 
-    // Handle errors
-    client.on('error', (err) => {
-        console.error('Connection error:', err);
-        res.status(500).json({ error: 'Failed to connect to Henzkey server' });
-    });
+    // creating a client socket
+    const client = udp.createSocket('udp4')
 
-    // Handle close event
-    client.on('close', () => {
-        console.log('Connection to Henzkey server closed');
-    });
+    //buffer msg
+    const data = Buffer.from('#01\r')
 
-    // Respond to the original HTTP request
-    res.status(200).json({ message: 'Update Received.' });
+    client.on('message', (msg, info) => {
+    console.log('Data received from server : ' + msg.toString())
+    console.log('Received %d bytes from %s:%d\n', msg.length, info.address, info.port)
+    })
+
+    //sending msg
+    client.send(data, 9820, '47.92.140.117', error => {
+    if (error) {
+        console.log(error)
+        client.close()
+    } else {
+        console.log('Data sent !!!')
+    }
+    })
+
+    setTimeout( () => {
+    client.close()
+    },1000)
+    
 })
 
 
