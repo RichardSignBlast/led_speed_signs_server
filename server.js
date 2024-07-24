@@ -35,18 +35,14 @@ const henzkeyPort = 9820;
 // Function to connect and listen to Henzkey server
 function connectToHenzkeyServer() {
     client.connect(henzkeyPort, henzkeyHost, () => {
-      console.log('Initialized connection to Henzkey server');
+      console.log('Connected to Henzkey server');
     });
   
     client.on('data', (data) => {
-      const hexData = data.toString('hex'); // Convert buffer to hexadecimal string
-      console.log('RES:', hexData);
+      // Convert received Buffer to hexadecimal string
+      const hexData = data.toString('hex');
+      console.log('RES: ', hexData);
   
-      // Convert hexadecimal string to decimal (or any other format as needed)
-      const decimalData = parseInt(hexData, 16); // Parse hexadecimal string to decimal
-  
-      // Example: Processing the decimal data further or sending it somewhere else
-      // processDecimalData(decimalData);
     });
   
     client.on('close', () => {
@@ -58,13 +54,21 @@ function connectToHenzkeyServer() {
       console.error('Error connecting to Henzkey server:', err);
       // Handle error, reconnect, or other logic as needed
     });
-}
+  }
   
   // Start listening to Henzkey server when the server starts
-  connectToHenzkeyServer();
+    connectToHenzkeyServer();
 
-function toHex(num) {
-    return ('0' + num.toString(16)).slice(-2).toUpperCase();
+
+function ascii_to_hexa(str)
+{
+    var arr1 = [];
+    for (var n = 0, l = str.length; n < l; n++)
+    {
+        var hex = Number(str.charCodeAt(n)).toString(16);
+        arr1.push(hex);
+    }
+    return arr1.join('');
 }
 
 /*
@@ -75,26 +79,92 @@ function toHex(num) {
     ];
     const hexMessage = numbers.map(toHex).join('');
     */
+function originalToHexFormat(originalText) {
+    // Remove spaces and return concatenated hexadecimal string
+    return originalText.replace(/\s/g, '');
+}
 
 app.post('/api/push_update', (req, res) => {
+    // ADD DEVICE ID
+    const {
+        currentPreset, minSpeed, thresholdSpeed, maxSpeed, 
+        belowThresholdProgramNumber,belowThresholdProgramImage, belowThresholdProgramBoth,
+        belowThresholdColorRed, belowThresholdColorGreen,
+        belowThresholdTimers1, belowThresholdTimers2, belowThresholdImage,
+        aboveThresholdProgramNumber,aboveThresholdProgramImage, aboveThresholdProgramBoth,
+        aboveThresholdColorRed, aboveThresholdColorGreen,
+        aboveThresholdTimers1, aboveThresholdTimers2, aboveThresholdImage,
+        radarDirection, radarDigit, radarSensitivity, radarHold,
+        monthSchedule, weekSchedule,
+        jan, feb, mar, apr, may, jun, jul, aug, sep, oct, nov, dec,
+        mon, tue, wed, thu, fri, sat, sun, timeStart, timeEnd
+    } = req.body;
+
+    let formatedBelowThresholdImage = '00';
+    if (belowThresholdImage-1 < 10) {
+        formatedBelowThresholdImage = String(belowThresholdImage-1).padStart(2,'0');
+    } else {
+        formatedBelowThresholdImage = String(belowThresholdImage-1);
+    }
+    console.log("Below Image #: ",formatedBelowThresholdImage);
     
-  
-    // Convert numbers to hexadecimal string
-    const hexMessage = '7E 7E A0 11 01 00 02 14 A2 23 01 01 01 01 01 21 01 02 00 00 00 00 EF EF';
-  
-    // Send the hexadecimal message over the TCP connection to Henzkey server
-    client.write(hexMessage, (err) => {
-      if (err) {
+      
+    // Example original text format to send
+    const originalText = '7E 7E A0 11 01 00 02 14 A2 ' + formatedBelowThresholdImage + ' 01 01 01 01 01 21 01 02 00 00 00 00 EF EF';
+    
+    // Convert original text format to concatenated hexadecimal string
+    const hexMessage = originalToHexFormat(originalText);
+    
+    // Convert hexadecimal string to Buffer
+    const hexBuffer = Buffer.from(hexMessage, 'hex');
+    
+    // Send the Buffer over the TCP connection to Henzkey server
+    
+    client.write(hexBuffer, (err) => {
+        if (err) {
         console.error('Error writing to Henzkey server:', err);
         res.status(500).json({ error: 'Failed to send data to Henzkey server' });
-      } else {
-        console.log(hexMessage);
+        } else {
+        console.log('Data sent successfully to Henzkey server');
         res.status(200).json({ message: 'Update Received and Sent.' });
-      }
+        }
     });
+    
+   console.log(hexMessage);
+   console.log(hexBuffer);
+
+   //res.status(200).json({ message: 'Update Received and Sent.' });
+});
+      
+
+/*
+app.post('/api/push_update', (req, res) => {
+    // Example hexadecimal message to send
+    const txt = '7e7ea01101000214a223010101010121010200000000efef';
+    
+
+    const hex = ascii_to_hexa(txt);
+
+    console.log(hex)
+    
+    
+    
+    // Send the hexadecimal message over the TCP connection to Henzkey server
+
+    client.write(hex, (err) => {
+        if (err) {
+        console.error('Error writing to Henzkey server:', err);
+        res.status(500).json({ error: 'Failed to send data to Henzkey server' });
+        } else {
+        console.log('REQ: ', hex);
+        res.status(200).json({ message: 'Update Received and Sent.' });
+        }
+    });
+    
+    res.status(200).json({ message: 'Update Received and Sent.' });
 });
 
-
+*/
 
 
 
