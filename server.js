@@ -67,16 +67,20 @@ function toHex(num) {
     return ('0' + num.toString(16)).slice(-2).toUpperCase();
 }
 
-app.post('/api/push_update', (req, res) => {
-    // Example numbers to convert to hexadecimal and send
+/*
     const numbers = [
       0x7E, 0x7E, 0xA0, 0x11, 0x01, 0x00, 0x02, 0x14, 0xA2, 0x00,
       0x01, 0x01, 0x01, 0x01, 0x01, 0x21, 0x01, 0x02, 0x00, 0x00,
       0x00, 0x00, 0xEF, 0xEF
     ];
+    const hexMessage = numbers.map(toHex).join('');
+    */
+
+app.post('/api/push_update', (req, res) => {
+    
   
     // Convert numbers to hexadecimal string
-    const hexMessage = numbers.map(toHex).join('');
+    const hexMessage = '7E 7E A0 11 01 00 02 14 A2 23 01 01 01 01 01 21 01 02 00 00 00 00 EF EF';
   
     // Send the hexadecimal message over the TCP connection to Henzkey server
     client.write(hexMessage, (err) => {
