@@ -26,72 +26,69 @@ const pool = mysql.createPool({
     // }
 });
 
+const client = new net.Socket();
+
 // Henzkey server: 47.92.140.117, port: 9820
-const serverHost = '47.92.140.117';
-const serverPort = 9820;
+const henzkeyHost = '47.92.140.117';
+const henzkeyPort = 9820;
+
+// Function to connect and listen to Henzkey server
+function connectToHenzkeyServer() {
+    client.connect(henzkeyPort, henzkeyHost, () => {
+      console.log('Initialized connection to Henzkey server');
+    });
+  
+    client.on('data', (data) => {
+      const hexData = data.toString('hex'); // Convert buffer to hexadecimal string
+      console.log('RES:', hexData);
+  
+      // Convert hexadecimal string to decimal (or any other format as needed)
+      const decimalData = parseInt(hexData, 16); // Parse hexadecimal string to decimal
+  
+      // Example: Processing the decimal data further or sending it somewhere else
+      // processDecimalData(decimalData);
+    });
+  
+    client.on('close', () => {
+      console.log('Connection to Henzkey server closed');
+      // Reconnect or handle reconnect logic if needed
+    });
+  
+    client.on('error', (err) => {
+      console.error('Error connecting to Henzkey server:', err);
+      // Handle error, reconnect, or other logic as needed
+    });
+}
+  
+  // Start listening to Henzkey server when the server starts
+  connectToHenzkeyServer();
+
+function toHex(num) {
+    return ('0' + num.toString(16)).slice(-2).toUpperCase();
+}
 
 app.post('/api/push_update', (req, res) => {
-    const {
-        currentPreset, minSpeed, thresholdSpeed, maxSpeed, 
-        belowThresholdProgramNumber,belowThresholdProgramImage, belowThresholdProgramBoth,
-        belowThresholdColorRed, belowThresholdColorGreen,
-        belowThresholdTimers1, belowThresholdTimers2, belowThresholdImage,
-        aboveThresholdProgramNumber,aboveThresholdProgramImage, aboveThresholdProgramBoth,
-        aboveThresholdColorRed, aboveThresholdColorGreen,
-        aboveThresholdTimers1, aboveThresholdTimers2, aboveThresholdImage,
-        radarDirection, radarDigit, radarSensitivity, radarHold,
-        monthSchedule, weekSchedule,
-        jan, feb, mar, apr, may, jun, jul, aug, sep, oct, nov, dec,
-        mon, tue, wed, thu, fri, sat, sun, timeStart, timeEnd
-      } = req.body;
-      console.log(req.body);
-      
-      // Establish a TCP connection to the server
-    /*
-    const client = udp.createConnection({ host: serverHost, port: serverPort }, () => {
-        console.log('Connected to Henzkey server');
-        
-        // Send the hex message
-        const hexMessage1 = '7E7EA01101000214A200010101010101210F0900000000EFEF';
-        const hexMessage = '7E 7E A0 11 01 00 02 14 A2 00 01 01 01 01 01 01 21 0F 09 00 00 00 00 EF EF';
-
-        client.write(hexMessage);
-        console.log('Message sent: ', hexMessage);
-        const hexBuffer = Buffer.from(hexMessage1, 'hex');
-        client.write(hexBuffer);
-        console.log('Message sent: ', hexBuffer);
-        client.write(hexMessage1);
-        console.log('Message sent: ', hexMessage1);
-        
+    // Example numbers to convert to hexadecimal and send
+    const numbers = [
+      0x7E, 0x7E, 0xA0, 0x11, 0x01, 0x00, 0x02, 0x14, 0xA2, 0x00,
+      0x01, 0x01, 0x01, 0x01, 0x01, 0x21, 0x01, 0x02, 0x00, 0x00,
+      0x00, 0x00, 0xEF, 0xEF
+    ];
+  
+    // Convert numbers to hexadecimal string
+    const hexMessage = numbers.map(toHex).join('');
+  
+    // Send the hexadecimal message over the TCP connection to Henzkey server
+    client.write(hexMessage, (err) => {
+      if (err) {
+        console.error('Error writing to Henzkey server:', err);
+        res.status(500).json({ error: 'Failed to send data to Henzkey server' });
+      } else {
+        console.log(hexMessage);
+        res.status(200).json({ message: 'Update Received and Sent.' });
+      }
     });
-    */
-
-    // creating a client socket
-    const client = udp.createSocket('udp4')
-
-    //buffer msg
-    const data = Buffer.from('#01\r')
-
-    client.on('message', (msg, info) => {
-    console.log('Data received from server : ' + msg.toString())
-    console.log('Received %d bytes from %s:%d\n', msg.length, info.address, info.port)
-    })
-
-    //sending msg
-    client.send(data, 9820, '47.92.140.117', error => {
-    if (error) {
-        console.log(error)
-        client.close()
-    } else {
-        console.log('Data sent !!!')
-    }
-    })
-
-    setTimeout( () => {
-    client.close()
-    },1000)
-    
-})
+});
 
 
 
