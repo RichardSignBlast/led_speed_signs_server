@@ -41,7 +41,7 @@ function connectToHenzkeyServer() {
     client.on('data', (data) => {
       // Convert received Buffer to hexadecimal string
       const hexData = data.toString('hex');
-      console.log('RES: ', hexData);
+      console.log('res: ', data);
   
     });
   
@@ -54,10 +54,10 @@ function connectToHenzkeyServer() {
       console.error('Error connecting to Henzkey server:', err);
       // Handle error, reconnect, or other logic as needed
     });
-  }
+}
   
   // Start listening to Henzkey server when the server starts
-    connectToHenzkeyServer();
+
 
 
 function ascii_to_hexa(str)
@@ -71,23 +71,33 @@ function ascii_to_hexa(str)
     return arr1.join('');
 }
 
-/*
-    const numbers = [
-      0x7E, 0x7E, 0xA0, 0x11, 0x01, 0x00, 0x02, 0x14, 0xA2, 0x00,
-      0x01, 0x01, 0x01, 0x01, 0x01, 0x21, 0x01, 0x02, 0x00, 0x00,
-      0x00, 0x00, 0xEF, 0xEF
-    ];
-    const hexMessage = numbers.map(toHex).join('');
-    */
-function originalToHexFormat(originalText) {
+
+function toHex(originalText) {
     // Remove spaces and return concatenated hexadecimal string
     return originalText.replace(/\s/g, '');
 }
 
+function getDigits(str) {
+    let c = "0123456789";
+    function check(x) {
+        return c.includes(x) ? true : false;
+    }
+
+    let matches = [...str].reduce(
+        (x, y) => (check(y) ? x + y : x),"");
+
+    if (matches) {
+        return Number(matches);
+    }
+}
+
+
+
+
 app.post('/api/push_update', (req, res) => {
-    // ADD DEVICE ID
+    // ADD DEVICE ID - checkedItems
     const {
-        currentPreset, minSpeed, thresholdSpeed, maxSpeed, 
+        checkedItems, currentPreset, minSpeed, thresholdSpeed, maxSpeed, 
         belowThresholdProgramNumber,belowThresholdProgramImage, belowThresholdProgramBoth,
         belowThresholdColorRed, belowThresholdColorGreen,
         belowThresholdTimers1, belowThresholdTimers2, belowThresholdImage,
@@ -99,73 +109,215 @@ app.post('/api/push_update', (req, res) => {
         jan, feb, mar, apr, may, jun, jul, aug, sep, oct, nov, dec,
         mon, tue, wed, thu, fri, sat, sun, timeStart, timeEnd
     } = req.body;
+    
+    // Loop all checkedItems to push update
+    Object.keys(checkedItems).forEach((item) => {
+        console.log('--- Pushing update for device:', item, '---');
 
-    let formatedBelowThresholdImage = '00';
-    if (belowThresholdImage-1 < 10) {
-        formatedBelowThresholdImage = String(belowThresholdImage-1).padStart(2,'0');
-    } else {
-        formatedBelowThresholdImage = String(belowThresholdImage-1);
-    }
-    console.log("Below Image #: ",formatedBelowThresholdImage);
-    
-      
-    // Example original text format to send
-    const originalText = '7E 7E A0 11 01 00 02 14 A2 ' + formatedBelowThresholdImage + ' 01 01 01 01 01 21 01 02 00 00 00 00 EF EF';
-    
-    // Convert original text format to concatenated hexadecimal string
-    const hexMessage = originalToHexFormat(originalText);
-    
-    // Convert hexadecimal string to Buffer
-    const hexBuffer = Buffer.from(hexMessage, 'hex');
-    
-    // Send the Buffer over the TCP connection to Henzkey server
-    
-    client.write(hexBuffer, (err) => {
-        if (err) {
-        console.error('Error writing to Henzkey server:', err);
-        res.status(500).json({ error: 'Failed to send data to Henzkey server' });
-        } else {
-        console.log('Data sent successfully to Henzkey server');
-        res.status(200).json({ message: 'Update Received and Sent.' });
+
+        // ========================== Convert parameters to HEX ==========================
+
+        const deviceID = getDigits(item);
+        const deviceID_hex = deviceID.toString(16).padStart(2, '0');
+        const minSpeed_hex = minSpeed.toString(16).padStart(2, '0');
+        const thresholdSpeed_hex = thresholdSpeed.toString(16).padStart(2, '0');
+
+        /*
+        |---------------------------------------------------------------------------------------------|
+        |Below\Above  | Number(green) | Number(red)   | Image         | Both(green)   | Both(red)     | 
+        |---------------------------------------------------------------------------------------------|
+        |Number(green)|      19       |      99       |      A9       |      39       |      B9       |
+        |---------------------------------------------------------------------------------------------|
+        |Number(red)  |      11       |      91       |      A1       |      31       |      B1       |
+        |---------------------------------------------------------------------------------------------|
+        |Image        |      12       |      92       |      A2       |      32       |      B2       |
+        |---------------------------------------------------------------------------------------------|
+        |Both(green)  |      1B       |      9B       |      AB       |      3B       |      BB       |
+        |---------------------------------------------------------------------------------------------|
+        |Both(red)    |      13       |      93       |      A3       |      33       |      B3       |
+        |---------------------------------------------------------------------------------------------|
+        */
+       let program_hex = '00';
+        if (belowThresholdProgramNumber) {                  //    Below     ,    Above
+            if (belowThresholdColorGreen) {
+                if (aboveThresholdProgramNumber) {
+                    if (aboveThresholdColorGreen) {
+                        program_hex = '19';                     // Number(green), Number(green)
+                    } else if (aboveThresholdColorRed) {
+                        program_hex = '99';                     // Number(green), Number(red)
+                    }
+                } else if (aboveThresholdProgramImage) {
+                    program_hex = 'a9';                         // Number(green), Image
+                } else if (aboveThresholdProgramBoth) {
+                    if (aboveThresholdColorGreen) {
+                        program_hex = '39';                     // Number(green), Both(green)
+                    } else if (aboveThresholdColorRed) {
+                        program_hex = 'b9';                     // Number(green), Both(red)
+                    }
+                }
+            } else if (belowThresholdColorRed) {
+                if (aboveThresholdProgramNumber) {
+                    if (aboveThresholdColorGreen) {
+                        program_hex = '11';                     // Number(red), Number(green)
+                    } else if (aboveThresholdColorRed) {
+                        program_hex = '91';                     // Number(red), Number(red)
+                    }
+                } else if (aboveThresholdProgramImage) {
+                    program_hex = 'a1';                         // Number(red), Image
+                } else if (aboveThresholdProgramBoth) {
+                    if (aboveThresholdColorGreen) {
+                        program_hex = '31';                     // Number(red), Both(green)
+                    } else if (aboveThresholdColorRed) {
+                        program_hex = 'b1';                     // Number(red), Both(red)
+                    }
+                }
+            }
+        } else if (belowThresholdProgramImage) {
+            if (aboveThresholdProgramNumber) {
+                if (aboveThresholdColorGreen) {
+                    program_hex = '12';                         // Image, Number(green)
+                } else if (aboveThresholdColorRed) {
+                    program_hex = '92';                         // Image, Number(red)
+                }
+            } else if (aboveThresholdProgramImage) {
+                program_hex = 'a2';                             // Image, Image
+            } else if (aboveThresholdProgramBoth) {
+                if (aboveThresholdColorGreen) {
+                    program_hex = '32';                         // Image, Both(green)
+                } else if (aboveThresholdColorRed) {
+                    program_hex = 'b2';                         // Image, Both(red)
+                }
+            }
+        } else if (belowThresholdProgramBoth) {
+            if (belowThresholdColorGreen) {
+                if (aboveThresholdProgramNumber) {
+                    if (aboveThresholdColorGreen) {
+                        program_hex = '1b';                     // Both(green), Number(green)
+                    } else if (aboveThresholdColorRed) {
+                        program_hex = '9b';                     // Both(green), Number(red)
+                    }
+                } else if (aboveThresholdProgramImage) {
+                    program_hex = 'ab';                         // Both(green), Image
+                } else if (aboveThresholdProgramBoth) {
+                    if (aboveThresholdColorGreen) {
+                        program_hex = '3b';                     // Both(green), Both(green)
+                    } else if (aboveThresholdColorRed) {
+                        program_hex = 'bb';                     // Both(green), Both(red)
+                    }
+                }
+            } else if (belowThresholdColorRed) {
+                if (aboveThresholdProgramNumber) {
+                    if (aboveThresholdColorGreen) {
+                        program_hex = '13';                     // Both(red), Number(green)
+                    } else if (aboveThresholdColorRed) {
+                        program_hex = '93';                     // Both(red), Number(red)
+                    }
+                } else if (aboveThresholdProgramImage) {
+                    program_hex = 'a3';                         // Both(red), Image
+                } else if (aboveThresholdProgramBoth) {
+                    if (aboveThresholdColorGreen) {
+                        program_hex = '33';                     // Both(red), Both(green)
+                    } else if (aboveThresholdColorRed) {
+                        program_hex = 'b3';                     // Both(red), Both(red)
+                    }
+                }
+            }
         }
-    });
-    
-   console.log(hexMessage);
-   console.log(hexBuffer);
 
-   //res.status(200).json({ message: 'Update Received and Sent.' });
-});
-      
+        const belowThresholdImage_hex = (belowThresholdImage-1).toString(16).padStart(2, '0');
+        const belowThresholdTimers1_hex = belowThresholdTimers1.toString(16).padStart(2, '0');
+        const belowThresholdTimers2_hex = belowThresholdTimers2.toString(16).padStart(2, '0');
+        const aboveThresholdImage_hex = (aboveThresholdImage-1).toString(16).padStart(2, '0');
+        const aboveThresholdTimers1_hex = aboveThresholdTimers1.toString(16).padStart(2, '0');
+        const aboveThresholdTimers2_hex = aboveThresholdTimers2.toString(16).padStart(2, '0');
 
-/*
-app.post('/api/push_update', (req, res) => {
-    // Example hexadecimal message to send
-    const txt = '7e7ea01101000214a223010101010121010200000000efef';
-    
+        /*
+        |---------------------------------------|
+        | Direction\Digit | 2-Digits | 3-Digits |
+        |---------------------------------------|
+        |     Near        |    01    |    21    |
+        |---------------------------------------|
+        |     Away        |    02    |    22    |
+        |---------------------------------------|
+        |     2-Ways      |    03    |    23    |
+        |---------------------------------------|
+        */
+        let radar_hex = '01';
 
-    const hex = ascii_to_hexa(txt);
-
-    console.log(hex)
-    
-    
-    
-    // Send the hexadecimal message over the TCP connection to Henzkey server
-
-    client.write(hex, (err) => {
-        if (err) {
-        console.error('Error writing to Henzkey server:', err);
-        res.status(500).json({ error: 'Failed to send data to Henzkey server' });
-        } else {
-        console.log('REQ: ', hex);
-        res.status(200).json({ message: 'Update Received and Sent.' });
+        if (radarDirection == 0) {
+            if (radarDigit == 2) {
+                radar_hex = '01';                  // Near, 2
+            } else if (radarDigit == 3) {
+                radar_hex = '21';                  // Near, 3
+            }
+        } else if (radarDirection == 1) {
+            if (radarDigit == 2) {
+                radar_hex = '02';                  // Away, 2
+            } else if (radarDigit == 3) {
+                radar_hex = '22';                  // Away, 3
+            }
+        } else if (radarDirection == 2) {
+            if (radarDigit == 2) {
+                radar_hex = '03';                  // 2-Ways, 2
+            } else if (radarDigit == 3) {
+                radar_hex = '23';                  // 2-Ways, 3
+            }
         }
+
+        // 1 <= sensitivity <= 15
+        let sensitivity = radarSensitivity;
+        if (sensitivity < 1) {
+            sensitivity = 1;
+        } else if (sensitivity > 15) {
+            sensitivity = 15;
+        }
+        const radarSensitivity_hex = sensitivity.toString(16).padStart(2, '0');
+        const radarHold_hex = radarHold.toString(16).padStart(2, '0');
+        
+
+        // ========================== Convert HEX Text to HEX Buffer ======================
+
+        const originalText = 
+        '7E 7E A0 '
+        + deviceID_hex
+        + ' 01 00 '
+        + minSpeed_hex
+        + thresholdSpeed_hex
+        + program_hex
+        + belowThresholdImage_hex 
+        + belowThresholdTimers1_hex
+        + belowThresholdTimers2_hex
+        + aboveThresholdImage_hex
+        + aboveThresholdTimers1_hex
+        + aboveThresholdTimers2_hex
+        + radar_hex
+        + radarSensitivity_hex
+        + radarHold_hex
+        + ' 00 00 00 00 EF EF';
+        
+        const hexMessage =toHex(originalText);
+        const hexBuffer = Buffer.from(hexMessage, 'hex');
+
+
+        // ========================== Send HEX Buffer to Henzkey =========================
+        
+        client.write(hexBuffer, (err) => {
+            if (err) {
+            console.error('Error writing to Henzkey server:', err);
+            res.status(500).json({ error: 'Failed to send data to Henzkey server' });
+            } else {
+            console.log('Data sent successfully to Henzkey server');
+            res.status(200).json({ message: 'Update Received and Sent.' });
+            }
+        });
+        
+        console.log('req:',hexBuffer);
     });
-    
-    res.status(200).json({ message: 'Update Received and Sent.' });
+    //res.status(200).json({ message: 'Update Received and Sent.' });
 });
 
-*/
-
+// listen to Henzkey server
+connectToHenzkeyServer();
 
 
 
@@ -236,7 +388,7 @@ app.post('/api/update_device', (req, res) => {
 app.post('/api/save', (req, res) => {
     // console.log(req.body);
     const {
-        currentPreset, minSpeed, thresholdSpeed, maxSpeed, 
+        checkedItems, currentPreset, minSpeed, thresholdSpeed, maxSpeed, 
         belowThresholdProgramNumber,belowThresholdProgramImage, belowThresholdProgramBoth,
         belowThresholdColorRed, belowThresholdColorGreen,
         belowThresholdTimers1, belowThresholdTimers2, belowThresholdImage,
