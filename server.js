@@ -39,28 +39,33 @@ function connectToHenzkeyServer() {
     });
   
     client.on('data', (data) => {
-      // Convert received Buffer to hexadecimal string
-      const hexData = data.toString('hex');
-      console.log('res: ', data);
+        // Convert received Buffer to hexadecimal string
+        const hexData = data.toString('hex');
+        // Auto response length = 16
+        // Set response length = 48
+        if (hexData.length < 48) {
+            console.log('msg:', data);
+        } else {
+            console.log('res:', data);
+        }
   
     });
   
     client.on('close', () => {
-      console.log('Connection to Henzkey server closed');
-      // Reconnect or handle reconnect logic if needed
+        console.log('Connection to Henzkey server closed');
+        // Reconnect or handle reconnect logic if needed
     });
   
     client.on('error', (err) => {
-      console.error('Error connecting to Henzkey server:', err);
-      // Handle error, reconnect, or other logic as needed
+        console.error('Error connecting to Henzkey server:', err);
+        // Handle error, reconnect, or other logic as needed
     });
 }
   
   // Start listening to Henzkey server when the server starts
 
 
-
-function ascii_to_hexa(str)
+function ascii_to_hex(str)
 {
     var arr1 = [];
     for (var n = 0, l = str.length; n < l; n++)
@@ -91,13 +96,89 @@ function getDigits(str) {
     }
 }
 
+function extractData(hexMessage) {
+    // Convert hexMessage from hex string to Buffer
+    const startMarker = '7e7e';
+    const endMarker = 'efef';
+    const buffer = Buffer.from(hexMessage, 'hex');
+
+    const startBuffer = Buffer.from(startMarker, 'hex');
+    const endBuffer = Buffer.from(endMarker, 'hex');
+    const startIdx = buffer.indexOf(startBuffer);
+    const endIdx = buffer.indexOf(endBuffer, startIdx + startBuffer.length);
+
+    if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx + startBuffer.length) {
+        throw new Error('Markers not found or in incorrect order');
+    }
+
+    // Extract data between markers
+    const dataBuffer = buffer.slice(startIdx + startBuffer.length, endIdx);
+    
+    // Convert extracted data buffer back to hex string
+    const dataHexString = dataBuffer.toString('hex');
+
+    return dataHexString;
+}
+
+
+
+app.get('/api/online', (req, res) => {
+    const { devices } = req.query;
+
+    if (!devices) {
+        return res.status(400).json({ error: 'Invalid data format. Expected an array of devices.' });
+    }
+
+    const labels = devices.split(',');
+    
+    for (let label in labels) {
+        const labelNum = getDigits(label);
+        const label_hex = labelNum.toString(16).padStart(2, '0');
+
+        // ========================== Convert HEX Text to HEX Buffer ======================
+
+        const originalText = 
+        '7E 7E A0 '
+        + label_hex
+        + ' 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 EF EF';
+        
+        const hexMessage =toHex(originalText);
+        const hexBuffer = Buffer.from(hexMessage, 'hex');
+
+
+        // ========================== Send HEX Buffer to Henzkey =========================
+
+
+        client.write(hexBuffer, (err) => {
+            if (err) {
+            console.error('Error writing to Henzkey server:', err);
+            res.status(500).json({ error: 'Failed to send data to Henzkey server' });
+            }
+        });
+
+        console.log('req:',hexBuffer);       
+    }
+    
+    
+
+        
+    
+    
+
+
+    res.status(200).json({ message: 'Update Received and Sent.' });
+});
+
+
+
+
 
 
 
 app.post('/api/push_update', (req, res) => {
     // ADD DEVICE ID - checkedItems
     const {
-        checkedItems, currentPreset, minSpeed, thresholdSpeed, maxSpeed, 
+        flicker, checkedItems, currentPreset, minSpeed, thresholdSpeed, maxSpeed, 
         belowThresholdProgramNumber,belowThresholdProgramImage, belowThresholdProgramBoth,
         belowThresholdColorRed, belowThresholdColorGreen,
         belowThresholdTimers1, belowThresholdTimers2, belowThresholdImage,
@@ -109,6 +190,57 @@ app.post('/api/push_update', (req, res) => {
         jan, feb, mar, apr, may, jun, jul, aug, sep, oct, nov, dec,
         mon, tue, wed, thu, fri, sat, sun, timeStart, timeEnd
     } = req.body;
+
+    // =====================Save Preset=====================
+    // Format parameters for sql update
+    let belowThresholdProgram = -1;
+    if (belowThresholdProgramNumber) {
+        belowThresholdProgram = 0;
+    } else if (belowThresholdProgramImage) {
+        belowThresholdProgram = 1;
+    } else if (belowThresholdProgramBoth) {
+        belowThresholdProgram = 2;
+    }
+
+    let belowThresholdColor = -1;
+    if (belowThresholdColorRed) {
+        belowThresholdColor = 0;
+    } else if (belowThresholdColorGreen) {
+        belowThresholdColor = 1;
+    }
+
+    let aboveThresholdProgram = -1;
+    if (aboveThresholdProgramNumber) {
+        aboveThresholdProgram = 0;
+    } else if (aboveThresholdProgramImage) {
+        aboveThresholdProgram = 1;
+    } else if (aboveThresholdProgramBoth) {
+        aboveThresholdProgram = 2;
+    }
+
+    let aboveThresholdColor = -1;
+    if (aboveThresholdColorRed) {
+        aboveThresholdColor = 0;
+    } else if (aboveThresholdColorGreen) {
+        aboveThresholdColor = 1;
+    }
+
+    // Use pool.getConnection() to get a connection from the pool
+    pool.getConnection((err, connection) => {
+        if (err) {
+            console.error('Error getting MySQL connection: ', err);
+            return res.status(500).json({ error: 'Database error' });
+        }
+
+        // Perform the query to check username and password
+        connection.query("UPDATE presets SET minSpeed = ?, thresholdSpeed = ?, maxSpeed = ?, belowProgram = ?, belowColor = ?, belowTimer1 = ?, belowTimer2 = ?, belowContent = ?, overProgram = ?, overColor = ?, overTimer1 = ?, overTimer2 = ?, overContent = ?, radarDirection = ?, radardigit = ?, sensitivity = ?, hold = ?, timePeriodMonth = ?, timePeriodWeek = ?, monthJan = ?, monthFeb = ?, monthMar = ?, monthApr = ?, monthMay = ?, monthJun = ?, monthJul = ?, monthAug = ?, monthSep = ?, monthOct = ?, monthNov = ?, monthDec = ?, weekMon = ?, weekTue = ?, weekWed = ?, weekThu = ?, weekFri = ?, weekSat = ?, weekSun = ?, timeStart = ?, timeEnd = ? WHERE presetid = ?",
+            [minSpeed, thresholdSpeed, maxSpeed, belowThresholdProgram, belowThresholdColor, belowThresholdTimers1, belowThresholdTimers2, belowThresholdImage, aboveThresholdProgram, aboveThresholdColor, aboveThresholdTimers1, aboveThresholdTimers2, aboveThresholdImage, radarDirection, radarDigit, radarSensitivity, radarHold, weekSchedule, monthSchedule, jan, feb, mar, apr, may, jun, jul, aug, sep, oct, nov, dec, mon, tue, wed, thu, fri, sat, sun, timeStart, timeEnd, currentPreset],
+            (err, results) => {
+            connection.release(); // Release the connection back to the pool
+        });
+    });
+
+    // =====================Push Update=====================
     
     // Loop all checkedItems to push update
     Object.keys(checkedItems).forEach((item) => {
@@ -123,6 +255,7 @@ app.post('/api/push_update', (req, res) => {
         const thresholdSpeed_hex = thresholdSpeed.toString(16).padStart(2, '0');
 
         /*
+                                            Flicker Off
         |---------------------------------------------------------------------------------------------|
         |Below\Above  | Number(green) | Number(red)   | Image         | Both(green)   | Both(red)     | 
         |---------------------------------------------------------------------------------------------|
@@ -136,93 +269,113 @@ app.post('/api/push_update', (req, res) => {
         |---------------------------------------------------------------------------------------------|
         |Both(red)    |      13       |      93       |      A3       |      33       |      B3       |
         |---------------------------------------------------------------------------------------------|
+
+                                            Flicker On
+        |---------------------------------------------------------------------------------------------|
+        |Below\Above  | Number(green) | Number(red)   | Image         | Both(green)   | Both(red)     | 
+        |---------------------------------------------------------------------------------------------|
+        |Number(green)|      5D       |      DD       |      ED       |      7D       |      F9       |
+        |---------------------------------------------------------------------------------------------|
+        |Number(red)  |      55       |      D5       |      E5       |      75       |      F5       |
+        |---------------------------------------------------------------------------------------------|
+        |Image        |      56       |      D6       |      E6       |      76       |      F6       |
+        |---------------------------------------------------------------------------------------------|
+        |Both(green)  |      5F       |      DB       |      EB       |      7B       |      FF       |
+        |---------------------------------------------------------------------------------------------|
+        |Both(red)    |      57       |      D7       |      E7       |      77       |      F7       |
+        |---------------------------------------------------------------------------------------------|
         */
-       let program_hex = '00';
-        if (belowThresholdProgramNumber) {                  //    Below     ,    Above
-            if (belowThresholdColorGreen) {
-                if (aboveThresholdProgramNumber) {
-                    if (aboveThresholdColorGreen) {
-                        program_hex = '19';                     // Number(green), Number(green)
-                    } else if (aboveThresholdColorRed) {
-                        program_hex = '99';                     // Number(green), Number(red)
+        let program_hex = '00';
+        if (!flicker) {
+            if (belowThresholdProgramNumber) {                      //    Below     ,    Above
+                if (belowThresholdColorGreen) {
+                    if (aboveThresholdProgramNumber) {
+                        if (aboveThresholdColorGreen) {
+                            program_hex = '19';                     // Number(green), Number(green)
+                        } else if (aboveThresholdColorRed) {
+                            program_hex = '99';                     // Number(green), Number(red)
+                        }
+                    } else if (aboveThresholdProgramImage) {
+                        program_hex = 'a9';                         // Number(green), Image
+                    } else if (aboveThresholdProgramBoth) {
+                        if (aboveThresholdColorGreen) {
+                            program_hex = '39';                     // Number(green), Both(green)
+                        } else if (aboveThresholdColorRed) {
+                            program_hex = 'b9';                     // Number(green), Both(red)
+                        }
                     }
-                } else if (aboveThresholdProgramImage) {
-                    program_hex = 'a9';                         // Number(green), Image
-                } else if (aboveThresholdProgramBoth) {
-                    if (aboveThresholdColorGreen) {
-                        program_hex = '39';                     // Number(green), Both(green)
-                    } else if (aboveThresholdColorRed) {
-                        program_hex = 'b9';                     // Number(green), Both(red)
+                } else if (belowThresholdColorRed) {
+                    if (aboveThresholdProgramNumber) {
+                        if (aboveThresholdColorGreen) {
+                            program_hex = '11';                     // Number(red), Number(green)
+                        } else if (aboveThresholdColorRed) {
+                            program_hex = '91';                     // Number(red), Number(red)
+                        }
+                    } else if (aboveThresholdProgramImage) {
+                        program_hex = 'a1';                         // Number(red), Image
+                    } else if (aboveThresholdProgramBoth) {
+                        if (aboveThresholdColorGreen) {
+                            program_hex = '31';                     // Number(red), Both(green)
+                        } else if (aboveThresholdColorRed) {
+                            program_hex = 'b1';                     // Number(red), Both(red)
+                        }
                     }
                 }
-            } else if (belowThresholdColorRed) {
+            } else if (belowThresholdProgramImage) {
                 if (aboveThresholdProgramNumber) {
                     if (aboveThresholdColorGreen) {
-                        program_hex = '11';                     // Number(red), Number(green)
+                        program_hex = '12';                         // Image, Number(green)
                     } else if (aboveThresholdColorRed) {
-                        program_hex = '91';                     // Number(red), Number(red)
+                        program_hex = '92';                         // Image, Number(red)
                     }
                 } else if (aboveThresholdProgramImage) {
-                    program_hex = 'a1';                         // Number(red), Image
+                    program_hex = 'a2';                             // Image, Image
                 } else if (aboveThresholdProgramBoth) {
                     if (aboveThresholdColorGreen) {
-                        program_hex = '31';                     // Number(red), Both(green)
+                        program_hex = '32';                         // Image, Both(green)
                     } else if (aboveThresholdColorRed) {
-                        program_hex = 'b1';                     // Number(red), Both(red)
+                        program_hex = 'b2';                         // Image, Both(red)
+                    }
+                }
+            } else if (belowThresholdProgramBoth) {
+                if (belowThresholdColorGreen) {
+                    if (aboveThresholdProgramNumber) {
+                        if (aboveThresholdColorGreen) {
+                            program_hex = '1b';                     // Both(green), Number(green)
+                        } else if (aboveThresholdColorRed) {
+                            program_hex = '9b';                     // Both(green), Number(red)
+                        }
+                    } else if (aboveThresholdProgramImage) {
+                        program_hex = 'ab';                         // Both(green), Image
+                    } else if (aboveThresholdProgramBoth) {
+                        if (aboveThresholdColorGreen) {
+                            program_hex = '3b';                     // Both(green), Both(green)
+                        } else if (aboveThresholdColorRed) {
+                            program_hex = 'bb';                     // Both(green), Both(red)
+                        }
+                    }
+                } else if (belowThresholdColorRed) {
+                    if (aboveThresholdProgramNumber) {
+                        if (aboveThresholdColorGreen) {
+                            program_hex = '13';                     // Both(red), Number(green)
+                        } else if (aboveThresholdColorRed) {
+                            program_hex = '93';                     // Both(red), Number(red)
+                        }
+                    } else if (aboveThresholdProgramImage) {
+                        program_hex = 'a3';                         // Both(red), Image
+                    } else if (aboveThresholdProgramBoth) {
+                        if (aboveThresholdColorGreen) {
+                            program_hex = '33';                     // Both(red), Both(green)
+                        } else if (aboveThresholdColorRed) {
+                            program_hex = 'b3';                     // Both(red), Both(red)
+                        }
                     }
                 }
             }
-        } else if (belowThresholdProgramImage) {
-            if (aboveThresholdProgramNumber) {
-                if (aboveThresholdColorGreen) {
-                    program_hex = '12';                         // Image, Number(green)
-                } else if (aboveThresholdColorRed) {
-                    program_hex = '92';                         // Image, Number(red)
-                }
-            } else if (aboveThresholdProgramImage) {
-                program_hex = 'a2';                             // Image, Image
-            } else if (aboveThresholdProgramBoth) {
-                if (aboveThresholdColorGreen) {
-                    program_hex = '32';                         // Image, Both(green)
-                } else if (aboveThresholdColorRed) {
-                    program_hex = 'b2';                         // Image, Both(red)
-                }
-            }
-        } else if (belowThresholdProgramBoth) {
-            if (belowThresholdColorGreen) {
-                if (aboveThresholdProgramNumber) {
-                    if (aboveThresholdColorGreen) {
-                        program_hex = '1b';                     // Both(green), Number(green)
-                    } else if (aboveThresholdColorRed) {
-                        program_hex = '9b';                     // Both(green), Number(red)
-                    }
-                } else if (aboveThresholdProgramImage) {
-                    program_hex = 'ab';                         // Both(green), Image
-                } else if (aboveThresholdProgramBoth) {
-                    if (aboveThresholdColorGreen) {
-                        program_hex = '3b';                     // Both(green), Both(green)
-                    } else if (aboveThresholdColorRed) {
-                        program_hex = 'bb';                     // Both(green), Both(red)
-                    }
-                }
-            } else if (belowThresholdColorRed) {
-                if (aboveThresholdProgramNumber) {
-                    if (aboveThresholdColorGreen) {
-                        program_hex = '13';                     // Both(red), Number(green)
-                    } else if (aboveThresholdColorRed) {
-                        program_hex = '93';                     // Both(red), Number(red)
-                    }
-                } else if (aboveThresholdProgramImage) {
-                    program_hex = 'a3';                         // Both(red), Image
-                } else if (aboveThresholdProgramBoth) {
-                    if (aboveThresholdColorGreen) {
-                        program_hex = '33';                     // Both(red), Both(green)
-                    } else if (aboveThresholdColorRed) {
-                        program_hex = 'b3';                     // Both(red), Both(red)
-                    }
-                }
-            }
+        } else {
+            console.log('add flicker on here');
         }
+        
 
         const belowThresholdImage_hex = (belowThresholdImage-1).toString(16).padStart(2, '0');
         const belowThresholdTimers1_hex = belowThresholdTimers1.toString(16).padStart(2, '0');
