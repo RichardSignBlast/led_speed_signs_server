@@ -6,6 +6,7 @@ const fs = require('fs');
 const cors = require('cors');
 const net = require('net');
 const udp = require('dgram');
+//const rp = require('request-promise');
 
 const app = express();
 const port = 3001;
@@ -25,6 +26,40 @@ const pool = mysql.createPool({
     //     ca: fs.readFileSync("DigiCertGlobalRootCA.crt.pem")
     // }
 });
+
+// Endpoint to fetch devices based on username
+app.get('/api/settings', (req, res) => {
+    const { device } = req.query;
+
+    if (!device) {
+        return res.status(400).json({ error: 'Parameters is required' });
+    }
+
+    console.log(device);
+
+    /*
+    // Use pool.getConnection() to get a connection from the pool
+    pool.getConnection((err, connection) => {
+        if (err) {
+            console.error('Error getting MySQL connection: ', err);
+            return res.status(500).json({ error: 'Database error' });
+        }
+
+        // Perform the query to fetch devices based on username
+        connection.query('SELECT * FROM presets WHERE username = ?', [username], (err, results) => {
+            connection.release(); // Release the connection back to the pool
+
+            if (err) {
+                console.error('Error querying database: ', err);
+                return res.status(500).json({ error: 'Database error' });
+            }
+
+            // Return devices data as JSON response
+            res.status(200).json({ devices: results });
+        });
+    });
+    */
+}); 
 
 const client = new net.Socket();
 
@@ -63,18 +98,6 @@ function connectToHenzkeyServer() {
 }
   
   // Start listening to Henzkey server when the server starts
-
-
-function ascii_to_hex(str)
-{
-    var arr1 = [];
-    for (var n = 0, l = str.length; n < l; n++)
-    {
-        var hex = Number(str.charCodeAt(n)).toString(16);
-        arr1.push(hex);
-    }
-    return arr1.join('');
-}
 
 
 function toHex(originalText) {
@@ -121,52 +144,100 @@ function extractData(hexMessage) {
 }
 
 
+function onlineLoop(labels, size) {
+    setTimeout(function() {
+        if (size >= 0) {
 
-app.get('/api/online', (req, res) => {
+            const label = labels[size];
+
+            const labelNum = getDigits(label);
+            const label_hex = labelNum.toString(16).padStart(2, '0');
+
+            // ========================== Convert HEX Text to HEX Buffer ======================
+
+            const originalText = 
+            '7E 7E A0 '
+            + label_hex
+            + ' 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 EF EF';
+            
+            const hexMessage =toHex(originalText);
+            const hexBuffer = Buffer.from(hexMessage, 'hex');
+
+
+            // ========================== Send HEX Buffer to Henzkey =========================
+
+
+            client.write(hexBuffer, (err) => {
+                if (err) {
+                console.error('Error writing to Henzkey server:', err);
+                res.status(500).json({ error: 'Failed to send data to Henzkey server' });
+                }
+            });
+
+            console.log('req:',hexBuffer);
+
+            onlineLoop(labels, size-1);
+        }
+    },100);     // Delay 100ms between each requests
+}
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+app.get('/api/online', async(req, res) => {
     const { devices } = req.query;
+    //r onlineDevices = ['7e7ea0xx10000108e60001013f0101010f0200000000efef6262'];
+    var onlineDevices = [];
 
     if (!devices) {
         return res.status(400).json({ error: 'Invalid data format. Expected an array of devices.' });
     }
 
     const labels = devices.split(',');
+
+    onlineLoop(labels, labels.length-1);
     
-    for (let label in labels) {
-        const labelNum = getDigits(label);
-        const label_hex = labelNum.toString(16).padStart(2, '0');
+    client.on('data', (data) => {
+        // Convert received Buffer to hexadecimal string
+        const hexData = data.toString('hex');
+        // Auto response length = 16
+        // Set response length = 48
+        if (hexData.length >= 48) {
+            onlineDevices.push(hexData);
+        }
+  
+    });
 
-        // ========================== Convert HEX Text to HEX Buffer ======================
+    var onlineResult = [];
 
-        const originalText = 
-        '7E 7E A0 '
-        + label_hex
-        + ' 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 EF EF';
+    await sleep(5000);
+
+    // Wait 5000ms for the online status to response
+    //sleep(5000).then(() => {
+    //console.log('Online Devices:');
+
+    let i = 0;
+
+    while ( i < onlineDevices.length) {
+        const extracted = extractData(onlineDevices[i]).slice(2, 4);;
+        //console.log(parseInt(extracted, 16));
+        //console.log(extracted);
         
-        const hexMessage =toHex(originalText);
-        const hexBuffer = Buffer.from(hexMessage, 'hex');
-
-
-        // ========================== Send HEX Buffer to Henzkey =========================
-
-
-        client.write(hexBuffer, (err) => {
-            if (err) {
-            console.error('Error writing to Henzkey server:', err);
-            res.status(500).json({ error: 'Failed to send data to Henzkey server' });
+        let j = 0;
+        while (j < labels.length) {
+            if (getDigits(labels[j]) === parseInt(extracted, 16)) {
+                onlineResult.push(labels[j]);
             }
-        });
+            j++;
+        } 
+        i++;
+    };
 
-        console.log('req:',hexBuffer);       
-    }
+    //console.log(onlineResult);
+    res.status(200).json({ devices: onlineResult });
+    //})
     
-    
-
-        
-    
-    
-
-
-    res.status(200).json({ message: 'Update Received and Sent.' });
 });
 
 
@@ -233,8 +304,8 @@ app.post('/api/push_update', (req, res) => {
         }
 
         // Perform the query to check username and password
-        connection.query("UPDATE presets SET minSpeed = ?, thresholdSpeed = ?, maxSpeed = ?, belowProgram = ?, belowColor = ?, belowTimer1 = ?, belowTimer2 = ?, belowContent = ?, overProgram = ?, overColor = ?, overTimer1 = ?, overTimer2 = ?, overContent = ?, radarDirection = ?, radardigit = ?, sensitivity = ?, hold = ?, timePeriodMonth = ?, timePeriodWeek = ?, monthJan = ?, monthFeb = ?, monthMar = ?, monthApr = ?, monthMay = ?, monthJun = ?, monthJul = ?, monthAug = ?, monthSep = ?, monthOct = ?, monthNov = ?, monthDec = ?, weekMon = ?, weekTue = ?, weekWed = ?, weekThu = ?, weekFri = ?, weekSat = ?, weekSun = ?, timeStart = ?, timeEnd = ? WHERE presetid = ?",
-            [minSpeed, thresholdSpeed, maxSpeed, belowThresholdProgram, belowThresholdColor, belowThresholdTimers1, belowThresholdTimers2, belowThresholdImage, aboveThresholdProgram, aboveThresholdColor, aboveThresholdTimers1, aboveThresholdTimers2, aboveThresholdImage, radarDirection, radarDigit, radarSensitivity, radarHold, weekSchedule, monthSchedule, jan, feb, mar, apr, may, jun, jul, aug, sep, oct, nov, dec, mon, tue, wed, thu, fri, sat, sun, timeStart, timeEnd, currentPreset],
+        connection.query("UPDATE presets SET minSpeed = ?, thresholdSpeed = ?, maxSpeed = ?, belowProgram = ?, belowColor = ?, belowTimer1 = ?, belowTimer2 = ?, belowContent = ?, overProgram = ?, overColor = ?, overTimer1 = ?, overTimer2 = ?, overContent = ?, radarDirection = ?, radardigit = ?, sensitivity = ?, hold = ?, timePeriodMonth = ?, timePeriodWeek = ?, monthJan = ?, monthFeb = ?, monthMar = ?, monthApr = ?, monthMay = ?, monthJun = ?, monthJul = ?, monthAug = ?, monthSep = ?, monthOct = ?, monthNov = ?, monthDec = ?, weekMon = ?, weekTue = ?, weekWed = ?, weekThu = ?, weekFri = ?, weekSat = ?, weekSun = ?, timeStart = ?, timeEnd = ?, flicker = ? WHERE presetid = ?",
+            [minSpeed, thresholdSpeed, maxSpeed, belowThresholdProgram, belowThresholdColor, belowThresholdTimers1, belowThresholdTimers2, belowThresholdImage, aboveThresholdProgram, aboveThresholdColor, aboveThresholdTimers1, aboveThresholdTimers2, aboveThresholdImage, radarDirection, radarDigit, radarSensitivity, radarHold, weekSchedule, monthSchedule, jan, feb, mar, apr, may, jun, jul, aug, sep, oct, nov, dec, mon, tue, wed, thu, fri, sat, sun, timeStart, timeEnd, flicker, currentPreset],
             (err, results) => {
             connection.release(); // Release the connection back to the pool
         });
@@ -372,8 +443,92 @@ app.post('/api/push_update', (req, res) => {
                     }
                 }
             }
-        } else {
-            console.log('add flicker on here');
+        } else {                                                    // ======== Flicker On =========
+            if (belowThresholdProgramNumber) {                      //    Below     ,    Above
+                if (belowThresholdColorGreen) {
+                    if (aboveThresholdProgramNumber) {
+                        if (aboveThresholdColorGreen) {
+                            program_hex = '5d';                     // Number(green), Number(green)
+                        } else if (aboveThresholdColorRed) {
+                            program_hex = 'dd';                     // Number(green), Number(red)
+                        }
+                    } else if (aboveThresholdProgramImage) {
+                        program_hex = 'ed';                         // Number(green), Image
+                    } else if (aboveThresholdProgramBoth) {
+                        if (aboveThresholdColorGreen) {
+                            program_hex = '7d';                     // Number(green), Both(green)
+                        } else if (aboveThresholdColorRed) {
+                            program_hex = 'f9';                     // Number(green), Both(red)
+                        }
+                    }
+                } else if (belowThresholdColorRed) {
+                    if (aboveThresholdProgramNumber) {
+                        if (aboveThresholdColorGreen) {
+                            program_hex = '55';                     // Number(red), Number(green)
+                        } else if (aboveThresholdColorRed) {
+                            program_hex = 'd5';                     // Number(red), Number(red)
+                        }
+                    } else if (aboveThresholdProgramImage) {
+                        program_hex = 'e5';                         // Number(red), Image
+                    } else if (aboveThresholdProgramBoth) {
+                        if (aboveThresholdColorGreen) {
+                            program_hex = '75';                     // Number(red), Both(green)
+                        } else if (aboveThresholdColorRed) {
+                            program_hex = 'f5';                     // Number(red), Both(red)
+                        }
+                    }
+                }
+            } else if (belowThresholdProgramImage) {
+                if (aboveThresholdProgramNumber) {
+                    if (aboveThresholdColorGreen) {
+                        program_hex = '56';                         // Image, Number(green)
+                    } else if (aboveThresholdColorRed) {
+                        program_hex = 'd6';                         // Image, Number(red)
+                    }
+                } else if (aboveThresholdProgramImage) {
+                    program_hex = 'e6';                             // Image, Image
+                } else if (aboveThresholdProgramBoth) {
+                    if (aboveThresholdColorGreen) {
+                        program_hex = '76';                         // Image, Both(green)
+                    } else if (aboveThresholdColorRed) {
+                        program_hex = 'f6';                         // Image, Both(red)
+                    }
+                }
+            } else if (belowThresholdProgramBoth) {
+                if (belowThresholdColorGreen) {
+                    if (aboveThresholdProgramNumber) {
+                        if (aboveThresholdColorGreen) {
+                            program_hex = '5f';                     // Both(green), Number(green)
+                        } else if (aboveThresholdColorRed) {
+                            program_hex = 'db';                     // Both(green), Number(red)
+                        }
+                    } else if (aboveThresholdProgramImage) {
+                        program_hex = 'eb';                         // Both(green), Image
+                    } else if (aboveThresholdProgramBoth) {
+                        if (aboveThresholdColorGreen) {
+                            program_hex = '7b';                     // Both(green), Both(green)
+                        } else if (aboveThresholdColorRed) {
+                            program_hex = 'ff';                     // Both(green), Both(red)
+                        }
+                    }
+                } else if (belowThresholdColorRed) {
+                    if (aboveThresholdProgramNumber) {
+                        if (aboveThresholdColorGreen) {
+                            program_hex = '57';                     // Both(red), Number(green)
+                        } else if (aboveThresholdColorRed) {
+                            program_hex = 'd7';                     // Both(red), Number(red)
+                        }
+                    } else if (aboveThresholdProgramImage) {
+                        program_hex = 'e7';                         // Both(red), Image
+                    } else if (aboveThresholdProgramBoth) {
+                        if (aboveThresholdColorGreen) {
+                            program_hex = '77';                     // Both(red), Both(green)
+                        } else if (aboveThresholdColorRed) {
+                            program_hex = 'f7';                     // Both(red), Both(red)
+                        }
+                    }
+                }
+            }
         }
         
 
