@@ -28,37 +28,471 @@ const pool = mysql.createPool({
 });
 
 // Endpoint to fetch devices based on username
-app.get('/api/settings', (req, res) => {
+app.get('/api/settings', async (req, res) => {
     const { device } = req.query;
 
     if (!device) {
         return res.status(400).json({ error: 'Parameters is required' });
     }
 
-    console.log(device);
 
-    /*
-    // Use pool.getConnection() to get a connection from the pool
-    pool.getConnection((err, connection) => {
-        if (err) {
-            console.error('Error getting MySQL connection: ', err);
-            return res.status(500).json({ error: 'Database error' });
+
+    onlineLoop([device], 0);
+    
+    client.on('data', (data) => {
+        // Convert received Buffer to hexadecimal string
+        const hexData = data.toString('hex');
+        // Auto response length = 16
+        // Set response length = 48
+        if (hexData.length >= 48) {
+            onlineDevices.push(hexData);
         }
-
-        // Perform the query to fetch devices based on username
-        connection.query('SELECT * FROM presets WHERE username = ?', [username], (err, results) => {
-            connection.release(); // Release the connection back to the pool
-
-            if (err) {
-                console.error('Error querying database: ', err);
-                return res.status(500).json({ error: 'Database error' });
-            }
-
-            // Return devices data as JSON response
-            res.status(200).json({ devices: results });
-        });
+  
     });
-    */
+
+    var onlineDevices = [];
+
+    await sleep(2000);
+
+    // Wait 5000ms for the online status to response
+    //sleep(5000).then(() => {
+    //console.log('Online Devices:');
+
+    let i = 0;
+
+    while ( i < onlineDevices.length) {
+        const extracted = extractData(onlineDevices[i]).slice(2, 4);;
+        //console.log(parseInt(extracted, 16));
+        //console.log(extracted);
+
+        if (parseInt(extracted, 16) === getDigits(device)) {
+            const dataBytes = extractData(onlineDevices[i])
+            
+            // Divide data bytes
+            const result = [];
+            for (let i = 0; i < dataBytes.length; i += 2) {
+                result.push(dataBytes.slice(i, i + 2));
+            }
+            
+            /*
+            Defination of Device Settings Result
+
+            index | Defination
+            0       link_addr
+            1       device_id
+            2       cmd
+            3       placeholder, always 00
+            4       on speed
+            5       over speed
+            6       program
+            7       below image
+            8       below timer1
+            9       below timer2
+            10      above image
+            11      above timer1
+            12      above timer2
+            13      direction/unit/digit
+            14      sensitivity
+            15      hold
+            16-19   null
+            */
+            if (result.length >= 20) {
+                let belowProgramNumber = false, belowProgramImage = false, belowProgramBoth = false;
+                let belowRed = false, belowGreen = false;
+                let aboveProgramNumber = false, aboveProgramImage = false, aboveProgramBoth = false;
+                let aboveRed = false, aboveGreen = false;
+                let flicker = false;
+
+                switch (result[6]) {        // Below         |  Above           
+                    case "19":              // Number(green)    Number(green)   === Flicker Off ===   
+                        belowProgramNumber = true;
+                        belowGreen = true;
+                        aboveProgramNumber = true;
+                        aboveGreen = true;
+                        break;
+                    case "99":              // Number(green)    Number(red)
+                        belowProgramNumber = true;
+                        belowGreen = true;
+                        aboveProgramNumber = true;
+                        aboveRed = true;
+                        break;
+                    case "a9":              // Number(green)    Image
+                        belowProgramNumber = true;
+                        belowGreen = true;
+                        aboveProgramImage = true;
+                        aboveRed = true;
+                        break;
+                    case "39":              // Number(green)    Both(green)
+                        belowProgramNumber = true;
+                        belowGreen = true;
+                        aboveProgramBoth = true;
+                        aboveGreen = true;
+                        break;
+                    case "b9":              // Number(green)    Both(red)
+                        belowProgramNumber = true;
+                        belowGreen = true;
+                        aboveProgramBoth = true;
+                        aboveRed = true;
+                        break;
+                    case "11":              // Number(red)      Number(green)
+                        belowProgramNumber = true;
+                        belowRed = true;
+                        aboveProgramNumber = true;
+                        aboveGreen = true;
+                        break;
+                    case "91":              // Number(red)      Number(red)
+                        belowProgramNumber = true;
+                        belowRed = true;
+                        aboveProgramNumber = true;
+                        aboveRed = true;
+                        break;
+                    case "a1":              // Number(red)      Image
+                        belowProgramNumber = true;
+                        belowRed = true;
+                        aboveProgramImage = true;
+                        aboveRed = true;
+                        break;
+                    case "31":              // Number(red)      Both(green)
+                        belowProgramNumber = true;
+                        belowRed = true;
+                        aboveProgramBoth = true;
+                        aboveGreen = true;
+                        break;
+                    case "b1":              // Number(red)      Both(red)
+                        belowProgramNumber = true;
+                        belowRed = true;
+                        aboveProgramBoth = true;
+                        aboveRed = true;
+                        break;
+                    case "12":              // Image            Number(green)
+                        belowProgramImage = true;
+                        belowGreen = true;
+                        aboveProgramNumber = true;
+                        aboveGreen = true;
+                        break;
+                    case "92":              // Image            Number(red)
+                        belowProgramImage = true;
+                        belowGreen = true;
+                        aboveProgramNumber = true;
+                        aboveRed = true;
+                        break;
+                    case "a2":              // Image            Image
+                        belowProgramImage = true;
+                        belowGreen = true;
+                        aboveProgramImage = true;
+                        aboveRed = true;
+                        break;
+                    case "32":              // Image            Both(green)
+                        belowProgramImage = true;
+                        belowGreen = true;
+                        aboveProgramBoth = true;
+                        aboveGreen = true;
+                        break;
+                    case "b2":              // Image            Both(red)
+                        belowProgramImage = true;
+                        belowGreen = true;
+                        aboveProgramBoth = true;
+                        aboveRed = true;
+                        break;
+                    case "1b":              // Both(green)      Number(green)
+                        belowProgramBoth = true;
+                        belowGreen = true;
+                        aboveProgramNumber = true;
+                        aboveGreen = true;
+                        break;
+                    case "9b":              // Both(green)      Number(red)
+                        belowProgramBoth = true;
+                        belowGreen = true;
+                        aboveProgramNumber = true;
+                        aboveRed = true;
+                        break;
+                    case "ab":              // Both(green)      Image
+                        belowProgramBoth = true;
+                        belowGreen = true;
+                        aboveProgramImage = true;
+                        aboveRed = true;
+                        break;
+                    case "3b":              // Both(green)      Both(green)
+                        belowProgramBoth = true;
+                        belowGreen = true;
+                        aboveProgramBoth = true;
+                        aboveGreen = true;
+                        break;
+                    case "bb":              // Both(green)      Both(red)
+                        belowProgramBoth = true;
+                        belowGreen = true;
+                        aboveProgramBoth = true;
+                        aboveRed = true;
+                        break;
+                    case "13":              // Both(red)        Number(green)
+                        belowProgramBoth = true;
+                        belowRed = true;
+                        aboveProgramNumber = true;
+                        aboveGreen = true;
+                        break;
+                    case "93":              // Both(red)        Number(red)
+                        belowProgramBoth = true;
+                        belowRed = true;
+                        aboveProgramNumber = true;
+                        aboveRed = true;
+                        break;
+                    case "a3":              // Both(red)        Image
+                        belowProgramBoth = true;
+                        belowRed = true;
+                        aboveProgramImage = true;
+                        aboveRed = true;
+                        break;
+                    case "33":              // Both(red)        Both(green)
+                        belowProgramBoth = true;
+                        belowRed = true;
+                        aboveProgramBoth = true;
+                        aboveGreen = true;
+                        break;
+                    case "b3":              // Both(red)        Both(red)
+                        belowProgramBoth = true;
+                        belowRed = true;
+                        aboveProgramBoth = true;
+                        aboveRed = true;
+                        break;
+                    case "5d":              // Number(green)    Number(green)   === Flicker On ===   
+                        belowProgramNumber = true;
+                        belowGreen = true;
+                        aboveProgramNumber = true;
+                        aboveGreen = true;
+                        flicker = true;
+                        break;
+                    case "dd":              // Number(green)    Number(red)
+                        belowProgramNumber = true;
+                        belowGreen = true;
+                        aboveProgramNumber = true;
+                        aboveRed = true;
+                        flicker = true;
+                        break;
+                    case "ed":              // Number(green)    Image
+                        belowProgramNumber = true;
+                        belowGreen = true;
+                        aboveProgramImage = true;
+                        aboveRed = true;
+                        flicker = true;
+                        break;
+                    case "7d":              // Number(green)    Both(green)
+                        belowProgramNumber = true;
+                        belowGreen = true;
+                        aboveProgramBoth = true;
+                        aboveGreen = true;
+                        flicker = true;
+                        break;
+                    case "f9":              // Number(green)    Both(red)
+                        belowProgramNumber = true;
+                        belowGreen = true;
+                        aboveProgramBoth = true;
+                        aboveRed = true;
+                        flicker = true;
+                        break;
+                    case "55":              // Number(red)      Number(green)
+                        belowProgramNumber = true;
+                        belowRed = true;
+                        aboveProgramNumber = true;
+                        aboveGreen = true;
+                        flicker = true;
+                        break;
+                    case "d5":              // Number(red)      Number(red)
+                        belowProgramNumber = true;
+                        belowRed = true;
+                        aboveProgramNumber = true;
+                        aboveRed = true;
+                        flicker = true;
+                        break;
+                    case "e5":              // Number(red)      Image
+                        belowProgramNumber = true;
+                        belowRed = true;
+                        aboveProgramImage = true;
+                        aboveRed = true;
+                        flicker = true;
+                        break;
+                    case "75":              // Number(red)      Both(green)
+                        belowProgramNumber = true;
+                        belowRed = true;
+                        aboveProgramBoth = true;
+                        aboveGreen = true;
+                        flicker = true;
+                        break;
+                    case "f5":              // Number(red)      Both(red)
+                        belowProgramNumber = true;
+                        belowRed = true;
+                        aboveProgramBoth = true;
+                        aboveRed = true;
+                        flicker = true;
+                        break;
+                    case "56":              // Image            Number(green)
+                        belowProgramImage = true;
+                        belowGreen = true;
+                        aboveProgramNumber = true;
+                        aboveGreen = true;
+                        flicker = true;
+                        break;
+                    case "d6":              // Image            Number(red)
+                        belowProgramImage = true;
+                        belowGreen = true;
+                        aboveProgramNumber = true;
+                        aboveRed = true;
+                        flicker = true;
+                        break;
+                    case "e6":              // Image            Image
+                        belowProgramImage = true;
+                        belowGreen = true;
+                        aboveProgramImage = true;
+                        aboveRed = true;
+                        flicker = true;
+                        break;
+                    case "76":              // Image            Both(green)
+                        belowProgramImage = true;
+                        belowGreen = true;
+                        aboveProgramBoth = true;
+                        aboveGreen = true;
+                        flicker = true;
+                        break;
+                    case "f6":              // Image            Both(red)
+                        belowProgramImage = true;
+                        belowGreen = true;
+                        aboveProgramBoth = true;
+                        aboveRed = true;
+                        flicker = true;
+                        break;
+                    case "5f":              // Both(green)      Number(green)
+                        belowProgramBoth = true;
+                        belowGreen = true;
+                        aboveProgramNumber = true;
+                        aboveGreen = true;
+                        flicker = true;
+                        break;
+                    case "db":              // Both(green)      Number(red)
+                        belowProgramBoth = true;
+                        belowGreen = true;
+                        aboveProgramNumber = true;
+                        aboveRed = true;
+                        flicker = true;
+                        break;
+                    case "eb":              // Both(green)      Image
+                        belowProgramBoth = true;
+                        belowGreen = true;
+                        aboveProgramImage = true;
+                        aboveRed = true;
+                        flicker = true;
+                        break;
+                    case "7b":              // Both(green)      Both(green)
+                        belowProgramBoth = true;
+                        belowGreen = true;
+                        aboveProgramBoth = true;
+                        aboveGreen = true;
+                        flicker = true;
+                        break;
+                    case "ff":              // Both(green)      Both(red)
+                        belowProgramBoth = true;
+                        belowGreen = true;
+                        aboveProgramBoth = true;
+                        aboveRed = true;
+                        flicker = true;
+                        break;
+                    case "57":              // Both(red)        Number(green)
+                        belowProgramBoth = true;
+                        belowRed = true;
+                        aboveProgramNumber = true;
+                        aboveGreen = true;
+                        flicker = true;
+                        break;
+                    case "d7":              // Both(red)        Number(red)
+                        belowProgramBoth = true;
+                        belowRed = true;
+                        aboveProgramNumber = true;
+                        aboveRed = true;
+                        flicker = true;
+                        break;
+                    case "e7":              // Both(red)        Image
+                        belowProgramBoth = true;
+                        belowRed = true;
+                        aboveProgramImage = true;
+                        aboveRed = true;
+                        flicker = true;
+                        break;
+                    case "77":              // Both(red)        Both(green)
+                        belowProgramBoth = true;
+                        belowRed = true;
+                        aboveProgramBoth = true;
+                        aboveGreen = true;
+                        flicker = true;
+                        break;
+                    case "f7":              // Both(red)        Both(red)
+                        belowProgramBoth = true;
+                        belowRed = true;
+                        aboveProgramBoth = true;
+                        aboveRed = true;
+                        flicker = true;
+                        break;
+                }
+
+                let direction = 0; // 0 - Towards, 1 - Away, 2 - 2-Ways
+                let digit = 2;     // 2 - 2-Digits, 3 - 3-Digits
+                
+                switch (result[13]) {
+                    case "01":      
+                        direction = 0;
+                        digit = 2;
+                        break;
+                    case "02":      
+                        direction = 1;
+                        digit = 2;
+                        break;
+                    case "03":      
+                        direction = 2;
+                        digit = 2;
+                        break;
+                    case "21":      
+                        direction = 0;
+                        digit = 3;
+                        break;
+                    case "22":      
+                        direction = 1;
+                        digit = 3;
+                        break;
+                    case "23":      
+                        direction = 2;
+                        digit = 3;
+                        break;
+                }
+
+                res.status(200).json({ 
+                    minSpeed: parseInt(result[4], 16), 
+                    thresholdSpeed: parseInt(result[5], 16), 
+                    maxSpeed: 200, 
+                    belowThresholdProgramNumber: belowProgramNumber,
+                    belowThresholdProgramImage: belowProgramImage, 
+                    belowThresholdProgramBoth: belowProgramBoth,
+                    belowThresholdColorRed: belowRed, 
+                    belowThresholdColorGreen: belowGreen,
+                    belowThresholdTimers1: parseInt(result[8], 16), 
+                    belowThresholdTimers2: parseInt(result[9], 16), 
+                    belowThresholdImage: (parseInt(result[7], 16) + 1),
+                    aboveThresholdProgramNumber: aboveProgramNumber,
+                    aboveThresholdProgramImage: aboveProgramImage, 
+                    aboveThresholdProgramBoth: aboveProgramBoth,
+                    aboveThresholdColorRed: aboveRed, 
+                    aboveThresholdColorGreen: aboveGreen,
+                    aboveThresholdTimers1: parseInt(result[11], 16), 
+                    aboveThresholdTimers2: parseInt(result[12], 16), 
+                    aboveThresholdImage: (parseInt(result[10], 16) + 1),
+                    radarDirection: direction, 
+                    radarDigit: digit, 
+                    radarSensitivity: parseInt(result[14], 16), 
+                    radarHold: parseInt(result[15], 16),
+                    flicker: flicker
+                });
+            } else {
+                res.status(500).send('Device Settings Incomplete.');
+            }
+        }
+        i++;
+    };
 }); 
 
 const client = new net.Socket();
