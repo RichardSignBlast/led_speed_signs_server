@@ -612,7 +612,7 @@ function onlineLoop(labels, size) {
 
             onlineLoop(labels, size-1);
         }
-    },100);     // Delay 100ms between each requests
+    },200);     // Delay 200ms between each requests
 }
 
 function sleep(ms) {
@@ -645,7 +645,7 @@ app.get('/api/online', async(req, res) => {
 
     var onlineResult = [];
 
-    await sleep(5000);
+    await sleep(10000);
 
     // Wait 5000ms for the online status to response
     //sleep(5000).then(() => {
@@ -1048,7 +1048,6 @@ app.post('/api/push_update', (req, res) => {
             console.error('Error writing to Henzkey server:', err);
             res.status(500).json({ error: 'Failed to send data to Henzkey server' });
             } else {
-            console.log('Data sent successfully to Henzkey server');
             res.status(200).json({ message: 'Update Received and Sent.' });
             }
         });
