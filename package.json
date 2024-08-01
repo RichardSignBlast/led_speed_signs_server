@@ -18,10 +18,13 @@
     "cors": "^2.8.5",
     "express": "^4.19.2",
     "express-session": "^1.18.0",
+    "fs": "^0.0.1-security",
     "helm": "^0.2.1",
+    "http": "^0.0.1-security",
+    "https": "^1.0.0",
     "https-browserify": "^1.0.0",
     "mysql": "^2.18.1",
-    "mysql2": "^3.11.0",
+    "mysql2": "^3.10.2",
     "net": "^1.0.2",
     "netcat": "^1.5.0",
     "openssl": "^2.0.0",
@@ -30,7 +33,7 @@
     "psql": "^0.0.1",
     "request-promise": "^4.2.6",
     "stream-browserify": "^3.0.0",
-    "url": "^0.11.4",
+    "url": "^0.11.3",
     "util": "^0.12.5"
   },
   "description": ""
