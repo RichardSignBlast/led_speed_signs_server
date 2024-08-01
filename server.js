@@ -6,13 +6,20 @@ const fs = require('fs');
 const cors = require('cors');
 const net = require('net');
 const udp = require('dgram');
+const https = require('https');
 //const rp = require('request-promise');
 
 const app = express();
 const port = 3001;
 
+const options = {
+    key: fs.readFileSync('/etc/ssl/private/privkey.pem'),
+    cert: fs.readFileSync('/etc/ssl/certs/fullchain.pem'),
+};
+
 app.use(cors());
-app.use(bodyParser.json());
+app.use(express.json());
+//app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'build')));
 
 // MySQL connection configuration
@@ -1295,7 +1302,7 @@ app.post('/api/login', (req, res) => {
         });
     });
 });
-
+/*
 // Serve React static files
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'build', 'index.html'));
@@ -1304,4 +1311,17 @@ app.get('*', (req, res) => {
 // Start server
 app.listen(port, () => {
     console.log(`Server is running on port ${port}`);
+});
+*/
+// Start HTTPS server
+https.createServer(options, app).listen(3001, () => {
+    console.log('HTTPS server running on port 3001');
+});
+
+// Redirect HTTP to HTTPS
+http.createServer((req, res) => {
+    res.writeHead(301, { "Location": "https://" + req.headers['host'] + req.url });
+    res.end();
+}).listen(80, () => {
+    console.log('HTTP server running on port 80 and redirecting to HTTPS');
 });
