@@ -13,10 +13,10 @@ const https = require('https');
 const app = express();
 const port = 3001;
 
-const options = {
-    key: fs.readFileSync('/etc/ssl/private/privkey.pem'),
-    cert: fs.readFileSync('/etc/ssl/certs/fullchain.pem'),
-};
+const privateKey = fs.readFileSync('/etc/ssl/private/privkey.pem', 'utf8');
+const certificate = fs.readFileSync('/etc/ssl/certs/fullchain.pem', 'utf8');
+
+const credentials = { key: privateKey, cert: certificate };
 
 app.use(cors());
 app.use(express.json());
@@ -1319,7 +1319,6 @@ https.createServer(options, app).listen(443, () => {
     console.log('HTTPS server running on port 443');
 });
 
-// Redirect HTTP to HTTPS
 http.createServer((req, res) => {
     res.writeHead(301, { "Location": "https://" + req.headers['host'] + req.url });
     res.end();
