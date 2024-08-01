@@ -1314,10 +1314,11 @@ app.listen(port, () => {
     console.log(`Server is running on port ${port}`);
 });
 */
-// Start HTTPS server
-https.createServer(options, app).listen(443, () => {
+
+https.createServer(credentials, app).listen(443, () => {
     console.log('HTTPS server running on port 443');
 });
+
 
 http.createServer((req, res) => {
     res.writeHead(301, { "Location": "https://" + req.headers['host'] + req.url });
