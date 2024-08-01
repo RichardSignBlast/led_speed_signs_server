@@ -13,8 +13,8 @@ const https = require('https');
 const app = express();
 const port = 3001;
 
-const privateKey = fs.readFileSync('/etc/letsencrypt/archive/lespeedsigns-server.australiaeast.cloudapp.azure.com/privkey2.pem', 'utf8');
-const certificate = fs.readFileSync('/etc/letsencrypt/archive/lespeedsigns-server.australiaeast.cloudapp.azure.com/fullchain2.pem', 'utf8');
+const privateKey = fs.readFileSync('/home/signblast_azure/credentials/privkey2.pem', 'utf8');
+const certificate = fs.readFileSync('/home/signblast_azure/credentials/fullchain2.pem', 'utf8');
 
 const credentials = { key: privateKey, cert: certificate };
 
