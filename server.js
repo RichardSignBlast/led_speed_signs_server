@@ -6,6 +6,7 @@ const fs = require('fs');
 const cors = require('cors');
 const net = require('net');
 const udp = require('dgram');
+const http = require('http');
 const https = require('https');
 //const rp = require('request-promise');
 
@@ -1314,8 +1315,8 @@ app.listen(port, () => {
 });
 */
 // Start HTTPS server
-https.createServer(options, app).listen(3001, () => {
-    console.log('HTTPS server running on port 3001');
+https.createServer(options, app).listen(443, () => {
+    console.log('HTTPS server running on port 443');
 });
 
 // Redirect HTTP to HTTPS
