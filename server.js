@@ -1319,7 +1319,7 @@ https.createServer(credentials, app).listen(3001, () => {
     console.log('HTTPS server running on port 3001');
 });
 
-
+/*
 // Redirect HTTP to HTTPS
 http.createServer((req, res) => {
     res.writeHead(301, { "Location": "https://" + req.headers['host'].replace(':80', ':3001') + req.url });
@@ -1327,3 +1327,4 @@ http.createServer((req, res) => {
 }).listen(80, () => {
     console.log('HTTP server running on port 80 and redirecting to HTTPS');
 });
+*/
