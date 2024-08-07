@@ -1095,8 +1095,8 @@ app.post('/api/update_device', (req, res) => {
             // Prepare SQL statements to update each device
             const updatePromises = devices.map(device => {
                 return new Promise((resolve, reject) => {
-                    connection.query('UPDATE devices SET label = ?, note = ?, lat = ?, lon = ? WHERE id = ?',
-                        [device.label, device.note, device.lat, device.lon, device.id],
+                    connection.query('UPDATE devices SET addr = ?, note = ?, lat = ?, lon = ? WHERE id = ?',
+                        [device.address, device.note, device.lat, device.lon, device.id],
                         (err, result) => {
                             if (err) {
                                 return reject(err);
