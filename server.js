@@ -1074,6 +1074,8 @@ connectToHenzkeyServer();
 app.post('/api/update_device', (req, res) => {
     const { username, devices } = req.body;
 
+    console.log(req.body);
+
     if (!username || !devices || !Array.isArray(devices)) {
         return res.status(400).json({ error: 'Invalid request' });
     }
