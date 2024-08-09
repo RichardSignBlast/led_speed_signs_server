@@ -41,18 +41,19 @@ app.post('/send-quote', (req, res) => {
 
     // Create a transporter
     let transporter = nodemailer.createTransport({
-        service: 'Outlook365',
+        service: 'gmail',
         auth: {
-            user: 'richard@signblast.com.au',
-            pass: 'F*225146269037am',
+            user: 'notification.ledspeedsigns@gmail.com',
+            pass: 'SignLED2024',
         }
     });
 
+    // Email options
     let mailOptions = {
-        from: 'richard@signblast.com.au',
-        to: 'info@signblast.com.au',
+        from: 'notification.ledspeedsigns@gmail.com',
+        to: 'richard@signblast.com.au',
         subject: 'New Quote Request - LED Speed Signs',
-        text: `You have received a new quote request from:
+        text: `You have a new quote request from:
         Name: ${name}
         Company: ${company}
         Email: ${email}
@@ -60,6 +61,7 @@ app.post('/send-quote', (req, res) => {
         Details: ${details}`
     };
 
+    // Send email
     transporter.sendMail(mailOptions, (error, info) => {
         if (error) {
             console.log(error);
