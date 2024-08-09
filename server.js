@@ -20,7 +20,7 @@ const credentials = { key: privateKey, cert: certificate };
 
 app.use(cors());
 app.use(express.json());
-//app.use(bodyParser.json());
+app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'build')));
 
 // MySQL connection configuration
@@ -33,6 +33,41 @@ const pool = mysql.createPool({
     // ssl: {
     //     ca: fs.readFileSync("DigiCertGlobalRootCA.crt.pem")
     // }
+});
+
+app.post('/send-quote', (req, res) => {
+    const { name, company, email, phone, details } = req.body;
+
+    // Create a transporter
+    let transporter = nodemailer.createTransport({
+        service: 'Outlook365',
+        auth: {
+            user: 'richard@signblast.com.au',
+            pass: 'F*225146269037am',
+        }
+    });
+
+    let mailOptions = {
+        from: 'richard@signblast.com.au',
+        to: 'info@signblast.com.au',
+        subject: 'New Quote Request - LED Speed Signs',
+        text: `You have received a new quote request from:
+        Name: ${name}
+        Company: ${company}
+        Email: ${email}
+        Phone: ${phone}
+        Details: ${details}`
+    };
+
+    transporter.sendMail(mailOptions, (error, info) => {
+        if (error) {
+            console.log(error);
+            res.status(500).send('Error sending email');
+        } else {
+            console.log('Email sent: ' + info.response);
+            res.status(200).send('Email sent');
+        }
+    });
 });
 
 // Endpoint to fetch devices based on username
