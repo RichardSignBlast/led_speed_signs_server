@@ -445,7 +445,7 @@ app.get('/api/settings', async (req, res) => {
         return res.status(400).json({ error: 'Parameters is required' });
     }
 
-    onlineLoop([device], 0);
+    onlineLoop([device], 0, 0);
     
     client.on('data', (data) => {
         // Convert received Buffer to hexadecimal string
@@ -914,7 +914,7 @@ app.get('/api/online', async(req, res) => {
 
     const labels = devices.split(',');
 
-    onlineLoop(labels, labels.length-1);
+    onlineLoop(labels, labels.length-1, 250);
     
     client.on('data', (data) => {
         // Convert received Buffer to hexadecimal string
