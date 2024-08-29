@@ -6,21 +6,12 @@ const fs = require('fs');
 const cors = require('cors');
 const net = require('net');
 const udp = require('dgram');
-const http = require('http');
-const https = require('https');
-const nodemailer = require('nodemailer');
 //const rp = require('request-promise');
 
 const app = express();
 const port = 3001;
 
-const privateKey = fs.readFileSync('/home/signblast_azure/credentials/privkey2.pem', 'utf8');
-const certificate = fs.readFileSync('/home/signblast_azure/credentials/fullchain2.pem', 'utf8');
-
-const credentials = { key: privateKey, cert: certificate };
-
 app.use(cors());
-app.use(express.json());
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'build')));
 
@@ -36,40 +27,450 @@ const pool = mysql.createPool({
     // }
 });
 
-app.post('/send-quote', (req, res) => {
-    const { name, company, email, phone, details } = req.body;
+const client = new net.Socket();
 
-    // Create a transporter
-    let transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-            user: 'notification.ledspeedsigns@gmail.com',
-            pass: 'SignLED2024',
+// Henzkey server: 47.92.140.117, port: 9820
+const henzkeyHost = '47.92.140.117';
+const henzkeyPort = 9820;
+
+// listen to Henzkey server
+connectToHenzkeyServer();
+log();
+
+// Function to connect and listen to Henzkey server
+function connectToHenzkeyServer() {
+    client.connect(henzkeyPort, henzkeyHost, () => {
+      console.log('Connected to Henzkey server');
+    });
+  
+    client.on('data', (data) => {
+        // Convert received Buffer to hexadecimal string
+        const hexData = data.toString('hex');
+        // Auto response length = 16
+        // Set response length = 48
+        if (hexData.length < 48) {
+            console.log('msg:', data);
+        } else {
+            console.log('res:', data);
+        }
+  
+    });
+  
+    client.on('close', () => {
+        console.log('Connection to Henzkey server closed');
+        // Reconnect or handle reconnect logic if needed
+    });
+  
+    client.on('error', (err) => {
+        console.error('Error connecting to Henzkey server:', err);
+        // Handle error, reconnect, or other logic as needed
+    });
+}
+  
+  // Start listening to Henzkey server when the server starts
+
+
+function toHex(originalText) {
+    // Remove spaces and return concatenated hexadecimal string
+    return originalText.replace(/\s/g, '');
+}
+
+function getDigits(str) {
+    let c = "0123456789";
+    function check(x) {
+        return c.includes(x) ? true : false;
+    }
+
+    let matches = [...str].reduce(
+        (x, y) => (check(y) ? x + y : x),"");
+
+    if (matches) {
+        return Number(matches);
+    }
+}
+
+
+function extractData(hexMessage) {
+    // Convert hexMessage from hex string to Buffer
+    const startMarker = '7e7e';
+    const endMarker = 'efef';
+    const buffer = Buffer.from(hexMessage, 'hex');
+
+    const startBuffer = Buffer.from(startMarker, 'hex');
+    const endBuffer = Buffer.from(endMarker, 'hex');
+    const startIdx = buffer.indexOf(startBuffer);
+    const endIdx = buffer.indexOf(endBuffer, startIdx + startBuffer.length);
+
+    if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx + startBuffer.length) {
+        throw new Error('Markers not found or in incorrect order');
+    }
+
+    // Extract data between markers
+    const dataBuffer = buffer.slice(startIdx + startBuffer.length, endIdx);
+    
+    // Convert extracted data buffer back to hex string
+    const dataHexString = dataBuffer.toString('hex');
+
+    return dataHexString;
+}
+
+
+function onlineLoop(labels, size, time) {
+    setTimeout(function() {
+        if (size >= 0) {
+
+            const label = labels[size];
+
+            const labelNum = getDigits(label);
+            const label_hex = labelNum.toString(16).padStart(2, '0');
+
+            // ========================== Convert HEX Text to HEX Buffer ======================
+
+            const originalText = 
+            '7E 7E A0 '
+            + label_hex
+            + ' 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 EF EF';
+            
+            const hexMessage =toHex(originalText);
+            const hexBuffer = Buffer.from(hexMessage, 'hex');
+
+
+            // ========================== Send HEX Buffer to Henzkey =========================
+
+
+            client.write(hexBuffer, (err) => {
+                if (err) {
+                console.error('Error writing to Henzkey server:', err);
+                res.status(500).json({ error: 'Failed to send data to Henzkey server' });
+                }
+            });
+
+            console.log('req:',hexBuffer);
+
+            onlineLoop(labels, size-1, time);
+        }
+    }, time);     // Delay 200ms between each requests
+}
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+
+// Function to insert log entry into the database
+function insertLogEntry(onlineDevices, totalDevices) {
+    const now = new Date();
+    const onlineDevicesStr = onlineDevices.join(','); // Convert array to CSV string
+
+    const query = `
+        INSERT INTO logs (created_at, online_devices, total_devices)
+        VALUES (?, ?, ?)
+    `;
+
+    const values = [now, onlineDevicesStr, totalDevices];
+
+    pool.query(query, values, (error, results) => {
+        if (error) {
+            console.error('Error inserting log entry:', error);
+        } else {
+            console.log('Data inserted into logs with ID:', results.insertId);
+        }
+    });
+}
+
+function log() {
+    // Recursive monitoring online status
+    setInterval(async () => {
+        const now = new Date();
+        const formattedTimestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}:${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+        console.log(`--- Starting Online Devices Logging ---`);
+
+        // --- Get online devices ---
+        const devices = Array.from({ length: 32 }, (_, i) => `K${String(i + 1).padStart(2, '0')}`).join(',');
+        const deviceCount = devices.split(',').length;
+
+        if (!devices) {
+            return console.error('Invalid data format. Expected an array of devices.');
+        }
+
+        const labels = devices.split(',');
+        let onlineDevices = [];
+
+        // Add data listener
+        const dataListener = (data) => {
+            const hexData = data.toString('hex');
+            if (hexData.length >= 48) {
+                onlineDevices.push(hexData);
+            }
+        };
+        client.on('data', dataListener);
+
+        // ============= Loop 3 times to get accurate but slow online devices result =============
+        onlineLoop(labels, labels.length - 1, 300);
+        await sleep(15000);
+        onlineLoop(labels, labels.length - 1, 300);
+        await sleep(15000);
+        onlineLoop(labels, labels.length - 1, 300);
+        await sleep(15000);
+        // ============= Loop 3 times to get more accurate but slow online devices result =============
+
+        client.removeListener('data', dataListener);
+
+        let onlineResult = new Set();
+
+        onlineDevices.forEach((deviceHex) => {
+            const extracted = extractData(deviceHex).slice(2, 4);
+            labels.forEach((label) => {
+                if (getDigits(label) === parseInt(extracted, 16)) {
+                    onlineResult.add(label);
+                }
+            });
+        });
+
+        onlineResult = Array.from(onlineResult);
+        onlineResult.sort();
+
+        console.log("Online Result - Log:");
+        console.log(onlineResult);
+
+        labels.forEach((label) => {
+            if (onlineResult.includes(label)) {
+                updateDeviceOnline(label, true);
+            } else {
+                updateDeviceOnline(label, false);
+            }
+        });
+         
+        // Insert log entry into the database
+        insertLogEntry(onlineResult, deviceCount);  // Using `deviceCount` here
+
+    }, (60 * 60000)); // 60000 ms = 1 minute, set to log every hour
+}
+
+
+function updateDeviceOnline(device, online) {
+    const query = 'UPDATE devices SET connected = ? WHERE label = ?';
+
+    const values = [online, device];
+
+    pool.query(query, values, (error, results) => {
+        if (error) {
+            console.error('Error Updateing Device Connection Status:', error);
+        } else {
+            console.log('Device Connection Status Success:', device, '=>', online, ', affectedRows: ', results.affectedRows);
+        }
+    });
+}
+
+app.get('/admin/logs_last_12months', async (req, res) => {
+    pool.getConnection((err, connection) => {
+        if (err) {
+            console.error('Error getting MySQL connection: ', err);
+            return res.status(500).json({ error: 'Database error' });
+        }
+
+        // Calculate the timestamp for 12 months ago
+        const now = new Date();
+        const twelveMonthsAgo = new Date(now.setMonth(now.getMonth() - 12));
+        const formattedTwelveMonthsAgo = twelveMonthsAgo.toISOString().slice(0, 19).replace('T', ' ');
+
+        // Perform the query to fetch logs from the last 12 months
+        const query = `SELECT * FROM logs WHERE created_at >= ? ORDER BY created_at DESC`;
+        connection.query(query, [formattedTwelveMonthsAgo], (err, results) => {
+            connection.release(); // Release the connection back to the pool
+
+            if (err) {
+                console.error('Error querying database: ', err);
+                return res.status(500).json({ error: 'Database error' });
+            }
+
+            // Return logs data as JSON response
+            res.status(200).json({ logs: results });
+        });
+    });
+});
+
+
+app.get('/admin/logs_last_30days', async (req, res) => {
+    pool.getConnection((err, connection) => {
+        if (err) {
+            console.error('Error getting MySQL connection: ', err);
+            return res.status(500).json({ error: 'Database error' });
+        }
+
+        // Calculate the timestamp for 30 days ago
+        const now = new Date();
+        const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        const formattedThirtyDaysAgo = thirtyDaysAgo.toISOString().slice(0, 19).replace('T', ' ');
+
+        // Perform the query to fetch logs from the last 30 days
+        const query = `SELECT * FROM logs WHERE created_at >= ? ORDER BY created_at DESC`;
+        connection.query(query, [formattedThirtyDaysAgo], (err, results) => {
+            connection.release(); // Release the connection back to the pool
+
+            if (err) {
+                console.error('Error querying database: ', err);
+                return res.status(500).json({ error: 'Database error' });
+            }
+
+            // Return logs data as JSON response
+            res.status(200).json({ logs: results });
+        });
+    });
+});
+
+app.get('/admin/logs_last_24hr', async (req, res) => {
+    // Use pool.getConnection() to get a connection from the pool
+    pool.getConnection((err, connection) => {
+        if (err) {
+            console.error('Error getting MySQL connection: ', err);
+            return res.status(500).json({ error: 'Database error' });
+        }
+
+        // Calculate the timestamp for 24 hours ago
+        const now = new Date();
+        const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        const formattedTwentyFourHoursAgo = twentyFourHoursAgo.toISOString().slice(0, 19).replace('T', ' ');
+
+        // Perform the query to fetch logs from the last 24 hours
+        const query = `SELECT * FROM logs WHERE created_at >= ? ORDER BY created_at DESC`;
+        connection.query(query, [formattedTwentyFourHoursAgo], (err, results) => {
+            connection.release(); // Release the connection back to the pool
+
+            if (err) {
+                console.error('Error querying database: ', err);
+                return res.status(500).json({ error: 'Database error' });
+            }
+
+            // Return logs data as JSON response
+            res.status(200).json({ logs: results });
+        });
+    });
+});
+
+
+app.get('/admin/logs_all', async (req, res) => {
+
+    // Use pool.getConnection() to get a connection from the pool
+    pool.getConnection((err, connection) => {
+        if (err) {
+            console.error('Error getting MySQL connection: ', err);
+            return res.status(500).json({ error: 'Database error' });
+        }
+
+        // Perform the query to fetch all logs
+        connection.query('SELECT * FROM logs', (err, results) => {
+            connection.release(); // Release the connection back to the pool
+
+            if (err) {
+                console.error('Error querying database: ', err);
+                return res.status(500).json({ error: 'Database error' });
+            }
+
+            // Return devices data as JSON response
+            res.status(200).json({ devices: results });
+        });
+    });
+})
+
+app.get('/admin/latest_status', async (req, res) => {
+
+    // Use pool.getConnection() to get a connection from the pool
+    pool.getConnection((err, connection) => {
+        if (err) {
+            console.error('Error getting MySQL connection: ', err);
+            return res.status(500).json({ error: 'Database error' });
+        }
+
+        // Perform the query to fetch all devices
+        connection.query('SELECT * FROM devices', (err, results) => {
+            connection.release(); // Release the connection back to the pool
+
+            if (err) {
+                console.error('Error querying database: ', err);
+                return res.status(500).json({ error: 'Database error' });
+            }
+
+            // Return devices data as JSON response
+            res.status(200).json({ devices: results });
+        });
+    });
+})
+
+app.get('/api/online', async (req, res) => {
+    const { devices } = req.query;
+    let onlineDevices = [];
+
+    if (!devices) {
+        return res.status(400).json({ error: 'Invalid data format. Expected an array of devices.' });
+    }
+
+    const labels = devices.split(',');
+
+    // Initiate the loop to send requests
+    onlineLoop(labels, labels.length - 1, 250);
+
+    // Listen for data from the Henzkey server
+    client.on('data', (data) => {
+        const hexData = data.toString('hex');
+        if (hexData.length >= 48) {
+            onlineDevices.push(hexData);
         }
     });
 
-    // Email options
-    let mailOptions = {
-        from: 'notification.ledspeedsigns@gmail.com',
-        to: 'richard@signblast.com.au',
-        subject: 'New Quote Request - LED Speed Signs',
-        text: `You have a new quote request from:
-        Name: ${name}
-        Company: ${company}
-        Email: ${email}
-        Phone: ${phone}
-        Details: ${details}`
-    };
+    // Wait for the responses
+    await sleep(10000);
 
-    // Send email
-    transporter.sendMail(mailOptions, (error, info) => {
-        if (error) {
-            console.log(error);
-            res.status(500).send('Error sending email');
-        } else {
-            console.log('Email sent: ' + info.response);
-            res.status(200).send('Email sent');
+    let onlineResult = new Set();
+
+    onlineDevices.forEach((deviceHex) => {
+        const extracted = extractData(deviceHex).slice(2, 4);
+        labels.forEach((label) => {
+            if (getDigits(label) === parseInt(extracted, 16)) {
+                onlineResult.add(label);
+            }
+        });
+    });
+
+    // Convert the Set back to an array and sort it
+    onlineResult = Array.from(onlineResult);
+    onlineResult.sort();
+
+    console.log("Online Result - Search:");
+    console.log(onlineResult);
+
+
+    res.status(200).json({ devices: onlineResult });
+});
+
+
+// Endpoint to fetch device online info for admin
+app.get('/api/device_status', (req, res) => {
+    // Use pool.getConnection() to get a connection from the pool
+    pool.getConnection((err, connection) => {
+        if (err) {
+            console.error('Error getting MySQL connection: ', err);
+            return res.status(500).json({ error: 'Database error' });
         }
+
+        // Perform the query to find info for all devices
+        connection.query('SELECT * FROM devices', (err, results) => {
+            connection.release();
+
+            if (err) {
+                console.error('Error querying database: ', err);
+                return res.status(500).json({ error: 'Database error' });
+            }
+
+            if (results.length > 0) {
+                // Device found, return success response with user data
+                const user = results[0];
+                res.status(200).json({ devices: results });
+            } else {
+                // No status found
+                res.status(401).json({ error: 'Invalid credentials' });
+            }
+        });
     });
 });
 
@@ -541,184 +942,7 @@ app.get('/api/settings', async (req, res) => {
     };
 }); 
 
-const client = new net.Socket();
 
-// Henzkey server: 47.92.140.117, port: 9820
-const henzkeyHost = '47.92.140.117';
-const henzkeyPort = 9820;
-
-// Function to connect and listen to Henzkey server
-function connectToHenzkeyServer() {
-    client.connect(henzkeyPort, henzkeyHost, () => {
-      console.log('Connected to Henzkey server');
-    });
-  
-    client.on('data', (data) => {
-        // Convert received Buffer to hexadecimal string
-        const hexData = data.toString('hex');
-        // Auto response length = 16
-        // Set response length = 48
-        if (hexData.length < 48) {
-            console.log('msg:', data);
-        } else {
-            console.log('res:', data);
-        }
-  
-    });
-  
-    client.on('close', () => {
-        console.log('Connection to Henzkey server closed');
-        // Reconnect or handle reconnect logic if needed
-    });
-  
-    client.on('error', (err) => {
-        console.error('Error connecting to Henzkey server:', err);
-        // Handle error, reconnect, or other logic as needed
-    });
-}
-  
-  // Start listening to Henzkey server when the server starts
-
-
-function toHex(originalText) {
-    // Remove spaces and return concatenated hexadecimal string
-    return originalText.replace(/\s/g, '');
-}
-
-function getDigits(str) {
-    let c = "0123456789";
-    function check(x) {
-        return c.includes(x) ? true : false;
-    }
-
-    let matches = [...str].reduce(
-        (x, y) => (check(y) ? x + y : x),"");
-
-    if (matches) {
-        return Number(matches);
-    }
-}
-
-function extractData(hexMessage) {
-    // Convert hexMessage from hex string to Buffer
-    const startMarker = '7e7e';
-    const endMarker = 'efef';
-    const buffer = Buffer.from(hexMessage, 'hex');
-
-    const startBuffer = Buffer.from(startMarker, 'hex');
-    const endBuffer = Buffer.from(endMarker, 'hex');
-    const startIdx = buffer.indexOf(startBuffer);
-    const endIdx = buffer.indexOf(endBuffer, startIdx + startBuffer.length);
-
-    if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx + startBuffer.length) {
-        throw new Error('Markers not found or in incorrect order');
-    }
-
-    // Extract data between markers
-    const dataBuffer = buffer.slice(startIdx + startBuffer.length, endIdx);
-    
-    // Convert extracted data buffer back to hex string
-    const dataHexString = dataBuffer.toString('hex');
-
-    return dataHexString;
-}
-
-
-function onlineLoop(labels, size) {
-    setTimeout(function() {
-        if (size >= 0) {
-
-            const label = labels[size];
-
-            const labelNum = getDigits(label);
-            const label_hex = labelNum.toString(16).padStart(2, '0');
-
-            // ========================== Convert HEX Text to HEX Buffer ======================
-
-            const originalText = 
-            '7E 7E A0 '
-            + label_hex
-            + ' 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 EF EF';
-            
-            const hexMessage =toHex(originalText);
-            const hexBuffer = Buffer.from(hexMessage, 'hex');
-
-
-            // ========================== Send HEX Buffer to Henzkey =========================
-
-
-            client.write(hexBuffer, (err) => {
-                if (err) {
-                console.error('Error writing to Henzkey server:', err);
-                res.status(500).json({ error: 'Failed to send data to Henzkey server' });
-                }
-            });
-
-            console.log('req:',hexBuffer);
-
-            onlineLoop(labels, size-1);
-        }
-    },200);     // Delay 200ms between each requests
-}
-
-function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-app.get('/api/online', async(req, res) => {
-    const { devices } = req.query;
-    //r onlineDevices = ['7e7ea0xx10000108e60001013f0101010f0200000000efef6262'];
-    var onlineDevices = [];
-
-    if (!devices) {
-        return res.status(400).json({ error: 'Invalid data format. Expected an array of devices.' });
-    }
-
-    const labels = devices.split(',');
-
-    onlineLoop(labels, labels.length-1);
-    
-    client.on('data', (data) => {
-        // Convert received Buffer to hexadecimal string
-        const hexData = data.toString('hex');
-        // Auto response length = 16
-        // Set response length = 48
-        if (hexData.length >= 48) {
-            onlineDevices.push(hexData);
-        }
-  
-    });
-
-    var onlineResult = [];
-
-    await sleep(10000);
-
-    // Wait 5000ms for the online status to response
-    //sleep(5000).then(() => {
-    //console.log('Online Devices:');
-
-    let i = 0;
-
-    while ( i < onlineDevices.length) {
-        const extracted = extractData(onlineDevices[i]).slice(2, 4);;
-        //console.log(parseInt(extracted, 16));
-        //console.log(extracted);
-        
-        let j = 0;
-        while (j < labels.length) {
-            if (getDigits(labels[j]) === parseInt(extracted, 16)) {
-                onlineResult.push(labels[j]);
-            }
-            j++;
-        } 
-        i++;
-    };
-
-    //console.log(onlineResult);
-    res.status(200).json({ devices: onlineResult });
-    //})
-    
-});
 
 
 
@@ -1103,16 +1327,11 @@ app.post('/api/push_update', (req, res) => {
     //res.status(200).json({ message: 'Update Received and Sent.' });
 });
 
-// listen to Henzkey server
-connectToHenzkeyServer();
-
 
 
 // Handle device info update
 app.post('/api/update_device', (req, res) => {
     const { username, devices } = req.body;
-
-    console.log(req.body);
 
     if (!username || !devices || !Array.isArray(devices)) {
         return res.status(400).json({ error: 'Invalid request' });
@@ -1135,8 +1354,8 @@ app.post('/api/update_device', (req, res) => {
             // Prepare SQL statements to update each device
             const updatePromises = devices.map(device => {
                 return new Promise((resolve, reject) => {
-                    connection.query('UPDATE devices SET note = ?, addr = ?, lat = ?, lon = ? WHERE id = ?',
-                        [device.note, device.addr, device.lat, device.lon, device.id],
+                    connection.query('UPDATE devices SET label = ?, note = ?, lat = ?, lon = ? WHERE id = ?',
+                        [device.label, device.note, device.lat, device.lon, device.id],
                         (err, result) => {
                             if (err) {
                                 return reject(err);
@@ -1343,7 +1562,7 @@ app.post('/api/login', (req, res) => {
         });
     });
 });
-/*
+
 // Serve React static files
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'build', 'index.html'));
@@ -1353,18 +1572,3 @@ app.get('*', (req, res) => {
 app.listen(port, () => {
     console.log(`Server is running on port ${port}`);
 });
-*/
-
-https.createServer(credentials, app).listen(3001, () => {
-    console.log('HTTPS server running on port 3001');
-});
-
-/*
-// Redirect HTTP to HTTPS
-http.createServer((req, res) => {
-    res.writeHead(301, { "Location": "https://" + req.headers['host'].replace(':80', ':3001') + req.url });
-    res.end();
-}).listen(80, () => {
-    console.log('HTTP server running on port 80 and redirecting to HTTPS');
-});
-*/
