@@ -70,8 +70,12 @@ function insertLogEntry(onlineDevices, totalDevices) {
 function log() {
     // Recursive monitoring online status
     setInterval(async () => {
+        // Get the current time in UTC and convert it to Brisbane time (UTC+10:00)
         const now = new Date();
-        const formattedTimestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}:${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+        const brisbaneOffset = 10 * 60; // Brisbane is UTC+10:00
+        const brisbaneTime = new Date(now.getTime() + (brisbaneOffset + now.getTimezoneOffset()) * 60000);
+        
+        const formattedTimestamp = `${brisbaneTime.getFullYear()}-${String(brisbaneTime.getMonth() + 1).padStart(2, '0')}-${String(brisbaneTime.getDate()).padStart(2, '0')} ${String(brisbaneTime.getHours()).padStart(2, '0')}:${String(brisbaneTime.getMinutes()).padStart(2, '0')}:${String(brisbaneTime.getSeconds()).padStart(2, '0')}`;
         console.log(`--- Starting Online Devices Logging ---`);
 
         // --- Get online devices ---
