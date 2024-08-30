@@ -378,7 +378,7 @@ app.get('/admin/logs_all', async (req, res) => {
             }
 
             // Return devices data as JSON response
-            res.status(200).json({ devices: results });
+            res.status(200).json({ logs: results });
         });
     });
 })
