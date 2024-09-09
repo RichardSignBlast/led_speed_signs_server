@@ -68,77 +68,185 @@ function insertLogEntry(onlineDevices, totalDevices) {
 }
 
 function log() {
-    // Recursive monitoring online status
-    setInterval(async () => {
-        // Get the current time in UTC and convert it to Brisbane time (UTC+10:00)
+    // Function to calculate the time until the next hour
+    function timeUntilNextHour() {
         const now = new Date();
-        const brisbaneOffset = 10 * 60; // Brisbane is UTC+10:00
-        const brisbaneTime = new Date(now.getTime() + (brisbaneOffset + now.getTimezoneOffset()) * 60000);
-        
-        const formattedTimestamp = `${brisbaneTime.getFullYear()}-${String(brisbaneTime.getMonth() + 1).padStart(2, '0')}-${String(brisbaneTime.getDate()).padStart(2, '0')} ${String(brisbaneTime.getHours()).padStart(2, '0')}:${String(brisbaneTime.getMinutes()).padStart(2, '0')}:${String(brisbaneTime.getSeconds()).padStart(2, '0')}`;
-        console.log(`--- Starting Online Devices Logging ---`);
+        const nextHour = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours() + 1, 0, 0, 0);
+        return nextHour - now;
+    }
 
-        // --- Get online devices ---
-        const devices = Array.from({ length: 32 }, (_, i) => `K${String(i + 1).padStart(2, '0')}`).join(',');
-        const deviceCount = devices.split(',').length;
+    // Function to get the current time in Brisbane time
+    function getBrisbaneTime() {
+        return new Intl.DateTimeFormat('en-AU', {
+            timeZone: 'Australia/Brisbane',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        }).format(new Date());
+    }
 
-        if (!devices) {
-            return console.error('Invalid data format. Expected an array of devices.');
+    // Function to calculate the time until 1:30 AM Brisbane time
+    function timeUntilNextRestart() {
+        const now = new Date();
+        const currentTimeInBrisbane = new Date(now.toLocaleString('en-AU', { timeZone: 'Australia/Brisbane' }));
+
+        const nextRestart = new Date(
+            currentTimeInBrisbane.getFullYear(),
+            currentTimeInBrisbane.getMonth(),
+            currentTimeInBrisbane.getDate(),
+            1, 30, 0, 0 // Set to 1:30 AM Brisbane time
+        );
+
+        if (currentTimeInBrisbane >= nextRestart) {
+            // If it's already past 1:30 AM, schedule for the next day
+            nextRestart.setDate(nextRestart.getDate() + 1);
         }
 
-        const labels = devices.split(',');
-        let onlineDevices = [];
+        return nextRestart - currentTimeInBrisbane;
+    }
 
-        // Add data listener
-        const dataListener = (data) => {
-            const hexData = data.toString('hex');
-            if (hexData.length >= 48) {
-                onlineDevices.push(hexData);
+    // Function to start logging at the exact hour
+    function startLogging() {
+        setInterval(async () => {
+            const brisbaneTime = getBrisbaneTime();
+            console.log(`--- Starting Online Devices Logging at ${brisbaneTime} ---`);
+
+            // --- Get online devices ---
+            const devices = Array.from({ length: 32 }, (_, i) => `K${String(i + 1).padStart(2, '0')}`).join(',');
+            const deviceCount = devices.split(',').length;
+
+            if (!devices) {
+                return console.error('Invalid data format. Expected an array of devices.');
             }
-        };
-        client.on('data', dataListener);
 
-        // ============= Loop 3 times to get accurate but slow online devices result =============
-        onlineLoop(labels, labels.length - 1, 300);
-        await sleep(15000);
-        onlineLoop(labels, labels.length - 1, 300);
-        await sleep(15000);
-        onlineLoop(labels, labels.length - 1, 300);
-        await sleep(15000);
-        // ============= Loop 3 times to get more accurate but slow online devices result =============
+            const labels = devices.split(',');
+            let onlineDevices = [];
 
-        client.removeListener('data', dataListener);
+            // Add data listener
+            const dataListener = (data) => {
+                const hexData = data.toString('hex');
+                if (hexData.length >= 48) {
+                    onlineDevices.push(hexData);
+                }
+            };
+            client.on('data', dataListener);
 
-        let onlineResult = new Set();
+            // Loop 3 times to get accurate but slow online devices result
+            onlineLoop(labels, labels.length - 1, 300);
+            await sleep(15000);
+            onlineLoop(labels, labels.length - 1, 300);
+            await sleep(15000);
+            onlineLoop(labels, labels.length - 1, 300);
+            await sleep(15000);
 
-        onlineDevices.forEach((deviceHex) => {
-            const extracted = extractData(deviceHex).slice(2, 4);
+            client.removeListener('data', dataListener);
+
+            let onlineResult = new Set();
+
+            onlineDevices.forEach((deviceHex) => {
+                const extracted = extractData(deviceHex).slice(2, 4);
+                labels.forEach((label) => {
+                    if (getDigits(label) === parseInt(extracted, 16)) {
+                        onlineResult.add(label);
+                    }
+                });
+            });
+
+            onlineResult = Array.from(onlineResult);
+            onlineResult.sort();
+
+            console.log("Online Result - Log:");
+            console.log(onlineResult);
+
             labels.forEach((label) => {
-                if (getDigits(label) === parseInt(extracted, 16)) {
-                    onlineResult.add(label);
+                if (onlineResult.includes(label)) {
+                    updateDeviceOnline(label, true);
+                } else {
+                    updateDeviceOnline(label, false);
                 }
             });
-        });
+             
+            // Insert log entry into the database
+            insertLogEntry(onlineResult, deviceCount);  // Using `deviceCount` here
 
-        onlineResult = Array.from(onlineResult);
-        onlineResult.sort();
+        }, 60 * 60000); // Log every hour (60 minutes)
+    }
 
-        console.log("Online Result - Log:");
-        console.log(onlineResult);
+    // Function to schedule handleRestart at 1:30 AM Brisbane time every day
+    function scheduleDailyRestart() {
+        const timeUntilRestart = timeUntilNextRestart();
+        console.log(`Scheduled restart in ${timeUntilRestart / 60000} minutes...`);
 
-        labels.forEach((label) => {
-            if (onlineResult.includes(label)) {
-                updateDeviceOnline(label, true);
-            } else {
-                updateDeviceOnline(label, false);
-            }
-        });
-         
-        // Insert log entry into the database
-        insertLogEntry(onlineResult, deviceCount);  // Using `deviceCount` here
+        const devices = Array.from({ length: 32 }, (_, i) => `K${String(i + 1).padStart(2, '0')}`).join(',');
+        const labels = devices.split(',');
 
-    }, (60 * 60000)); // 60000 ms = 1 minute, set to log every hour
+        // Schedule the first call
+        setTimeout(() => {
+            handleRestart(labels, labels.length - 1, 300); // Call your restart function
+
+            // Schedule it to run again every 24 hours after the first call
+            setInterval(() => {
+                handleRestart(labels, labels.length - 1, 300);
+            }, 24 * 60 * 60 * 1000); // Every 24 hours
+
+        }, timeUntilRestart);
+    }
+
+    // Wait until the next hour to start the logging
+    const initialTimeout = timeUntilNextHour();
+    console.log(`Waiting ${initialTimeout / 60000} minutes until the next hour to start logging...`);
+    
+    setTimeout(() => {
+        startLogging();
+    }, initialTimeout);
+
+    // Schedule the daily restart at 1:30 AM Brisbane time
+    scheduleDailyRestart();
 }
+
+function handleRestart(labels, size, time) {
+
+    console.log("=== Scheduled Restart ===");
+
+    setTimeout(function() {
+        if (size >= 0) {
+
+            const label = labels[size];
+
+            const labelNum = "" + getDigits(label);
+            const label_hex = labelNum.toString(16).padStart(2, '0');
+
+            // ========================== Convert HEX Text to HEX Buffer ======================
+
+            const originalText = 
+            '7E 7E A0 '
+            + label_hex
+            + ' 5E 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 EF EF';
+            
+            const hexMessage =toHex(originalText);
+            const hexBuffer = Buffer.from(hexMessage, 'hex');
+
+
+            // ========================== Send HEX Buffer to Henzkey =========================
+
+            client.write(hexBuffer, (err) => {
+                if (err) {
+                console.error('Error writing to Henzkey server:', err);
+                res.status(500).json({ error: 'Failed to send data to Henzkey server' });
+                }
+            });
+
+            console.log('req:',hexBuffer);
+
+            handleRestart(labels, size-1, time);
+        }
+    }, time);     // Delay 200ms between each requests
+}
+
 
 
 function updateDeviceOnline(device, online) {
@@ -328,6 +436,35 @@ app.get('/admin/logs_last_30days', async (req, res) => {
         });
     });
 });
+
+app.get('/admin/logs_last_7days', async (req, res) => {
+    pool.getConnection((err, connection) => {
+        if (err) {
+            console.error('Error getting MySQL connection: ', err);
+            return res.status(500).json({ error: 'Database error' });
+        }
+
+        // Calculate the timestamp for 7 days ago
+        const now = new Date();
+        const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const formattedSevenDaysAgo = sevenDaysAgo.toISOString().slice(0, 19).replace('T', ' ');
+
+        // Perform the query to fetch logs from the last 7 days
+        const query = `SELECT * FROM logs WHERE created_at >= ? ORDER BY created_at DESC`;
+        connection.query(query, [formattedSevenDaysAgo], (err, results) => {
+            connection.release(); // Release the connection back to the pool
+
+            if (err) {
+                console.error('Error querying database: ', err);
+                return res.status(500).json({ error: 'Database error' });
+            }
+
+            // Return logs data as JSON response
+            res.status(200).json({ logs: results });
+        });
+    });
+});
+
 
 app.get('/admin/logs_last_24hr', async (req, res) => {
     // Use pool.getConnection() to get a connection from the pool
