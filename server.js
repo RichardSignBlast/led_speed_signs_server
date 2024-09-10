@@ -75,20 +75,6 @@ function log() {
         return nextHour - now;
     }
 
-    // Function to get the current time in Brisbane time
-    function getBrisbaneTime() {
-        return new Intl.DateTimeFormat('en-AU', {
-            timeZone: 'Australia/Brisbane',
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: false
-        }).format(new Date());
-    }
-
     // Function to calculate the time until 1:30 AM Brisbane time
     function timeUntilNextRestart() {
         const now = new Date();
@@ -107,6 +93,20 @@ function log() {
         }
 
         return nextRestart - currentTimeInBrisbane;
+    }
+
+    // Helper function to get Brisbane time for logging
+    function getBrisbaneTime() {
+        return new Intl.DateTimeFormat('en-AU', {
+            timeZone: 'Australia/Brisbane',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        }).format(new Date());
     }
 
     // Function to start logging at the exact hour
@@ -209,6 +209,13 @@ function log() {
         }, timeUntilRestart);
     }
 
+    // Calculate milliseconds until the next hour
+    function msUntilNextHour() {
+        const now = new Date();
+        const nextHour = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours() + 1, 0, 0);
+        return nextHour - now;
+    }
+
     // Wait until the next hour to start the logging
     const initialTimeout = timeUntilNextHour();
     console.log(`Next logging device online in ${initialTimeout / 60000} minutes...`);
@@ -216,7 +223,6 @@ function log() {
         startLogging();
     }, initialTimeout);
 
-    // Schedule the daily restart at 1:30 AM Brisbane time
     scheduleDailyRestart();
 }
 
