@@ -98,7 +98,7 @@ function log() {
             currentTimeInBrisbane.getFullYear(),
             currentTimeInBrisbane.getMonth(),
             currentTimeInBrisbane.getDate(),
-            10, 18, 0, 0 // Set to 1:30 AM Brisbane time
+            1, 30, 0, 0 // Set to 1:30 AM Brisbane time
         );
 
         if (currentTimeInBrisbane >= nextRestart) {
@@ -179,7 +179,7 @@ function log() {
     // Function to schedule handleRestart at 1:30 AM Brisbane time every day
     function scheduleDailyRestart() {
         const timeUntilRestart = timeUntilNextRestart();
-        console.log(`Scheduled soft restart in ${timeUntilRestart / 60000} minutes...`);
+        console.log(`Next scheduled soft restart in ${timeUntilRestart / 60000} minutes...`);
         
         const devices = Array.from({ length: 32 }, (_, i) => `K${String(i + 1).padStart(2, '0')}`).join(',');
         const labels = devices.split(',');
@@ -211,7 +211,7 @@ function log() {
 
     // Wait until the next hour to start the logging
     const initialTimeout = timeUntilNextHour();
-    console.log(`Logging device online in ${initialTimeout / 60000} minutes...`);
+    console.log(`Next logging device online in ${initialTimeout / 60000} minutes...`);
     setTimeout(() => {
         startLogging();
     }, initialTimeout);
