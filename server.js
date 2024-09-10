@@ -68,6 +68,13 @@ function insertLogEntry(onlineDevices, totalDevices) {
 }
 
 function log() {
+    // Function to calculate the time until the next hour
+    function timeUntilNextHour() {
+        const now = new Date();
+        const nextHour = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours() + 1, 0, 0, 0);
+        return nextHour - now;
+    }
+
     // Function to calculate the time until 1:30 AM Brisbane time
     function timeUntilNextRestart() {
         const now = new Date();
@@ -102,11 +109,10 @@ function log() {
         }).format(new Date());
     }
 
-    // Function to start logging
+    // Function to start logging at the exact hour
     function startLogging() {
         const logInterval = 60 * 60 * 1000; // 1 hour
 
-        // Log immediately
         async function logOnlineDevices() {
             const brisbaneTime = getBrisbaneTime();
             console.log(`--- Starting Online Devices Logging at ${brisbaneTime} ---`);
@@ -170,10 +176,15 @@ function log() {
             insertLogEntry(onlineResult, deviceCount);  // Using `deviceCount` here
         }
 
-        // Start logging immediately
-        logOnlineDevices();
-        // Set interval to log every hour
-        setInterval(logOnlineDevices, logInterval);
+        // Calculate time until next hour and schedule the logging
+        const initialTimeout = timeUntilNextHour();
+        console.log(`Next logging device online in ${initialTimeout / 60000} minutes...`);
+        setTimeout(() => {
+            // Start logging at the next hour
+            logOnlineDevices();
+            // Set interval to log every hour
+            setInterval(logOnlineDevices, logInterval);
+        }, initialTimeout);
     }
 
     // Function to schedule handleRestart at 1:30 AM Brisbane time every day
@@ -209,7 +220,7 @@ function log() {
         }, timeUntilRestart);
     }
 
-    // Start logging immediately and then every hour
+    // Start logging at the exact hour and then every hour
     startLogging();
 
     // Schedule daily restart
