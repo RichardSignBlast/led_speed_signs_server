@@ -98,7 +98,7 @@ function log() {
             currentTimeInBrisbane.getFullYear(),
             currentTimeInBrisbane.getMonth(),
             currentTimeInBrisbane.getDate(),
-            1, 30, 0, 0 // Set to 1:30 AM Brisbane time
+            10, 18, 0, 0 // Set to 1:30 AM Brisbane time
         );
 
         if (currentTimeInBrisbane >= nextRestart) {
@@ -179,18 +179,31 @@ function log() {
     // Function to schedule handleRestart at 1:30 AM Brisbane time every day
     function scheduleDailyRestart() {
         const timeUntilRestart = timeUntilNextRestart();
-        console.log(`Scheduled restart in ${timeUntilRestart / 60000} minutes...`);
-
+        console.log(`Scheduled soft restart in ${timeUntilRestart / 60000} minutes...`);
+        
         const devices = Array.from({ length: 32 }, (_, i) => `K${String(i + 1).padStart(2, '0')}`).join(',');
         const labels = devices.split(',');
 
         // Schedule the first call
         setTimeout(() => {
-            handleRestart(labels, labels.length - 1, 300); // Call your restart function
+            console.log("=== Scheduled Restart ===");
+            handleRestart(labels, labels.length - 1, 300);
+
+            // Insert restart log to DB
+            // (No device online, total_device = 0)
+            let onlineResult = new Array();
+            console.log("Logging Scheduled Restart...")
+            insertLogEntry(onlineResult, 0);
 
             // Schedule it to run again every 24 hours after the first call
             setInterval(() => {
                 handleRestart(labels, labels.length - 1, 300);
+
+                // Insert restart log to DB
+                // (No device online, total_device = 0)
+                let onlineResult = new Array();
+                console.log("Logging Scheduled Restart...")
+                insertLogEntry(onlineResult, 0);
             }, 24 * 60 * 60 * 1000); // Every 24 hours
 
         }, timeUntilRestart);
@@ -198,8 +211,7 @@ function log() {
 
     // Wait until the next hour to start the logging
     const initialTimeout = timeUntilNextHour();
-    console.log(`Waiting ${initialTimeout / 60000} minutes until the next hour to start logging...`);
-    
+    console.log(`Logging device online in ${initialTimeout / 60000} minutes...`);
     setTimeout(() => {
         startLogging();
     }, initialTimeout);
@@ -235,8 +247,8 @@ function handleRestart(labels, size, time) {
 
             client.write(hexBuffer, (err) => {
                 if (err) {
-                console.error('Error writing to Henzkey server:', err);
-                res.status(500).json({ error: 'Failed to send data to Henzkey server' });
+                console.error('Error writing to external servers:', err);
+                res.status(500).json({ error: 'Failed to send data to external servers' });
                 }
             });
 
@@ -266,7 +278,7 @@ function updateDeviceOnline(device, online) {
 // Function to connect and listen to Henzkey server
 function connectToHenzkeyServer() {
     client.connect(henzkeyPort, henzkeyHost, () => {
-      console.log('Connected to Henzkey server');
+      console.log('Connected to external servers');
     });
   
     client.on('data', (data) => {
@@ -283,7 +295,7 @@ function connectToHenzkeyServer() {
     });
   
     client.on('close', () => {
-        console.log('Connection to Henzkey server closed');
+        console.log('Connection to external servers closed');
         // Reconnect or handle reconnect logic if needed
     });
   
@@ -364,8 +376,8 @@ function onlineLoop(labels, size, time) {
 
             client.write(hexBuffer, (err) => {
                 if (err) {
-                console.error('Error writing to Henzkey server:', err);
-                res.status(500).json({ error: 'Failed to send data to Henzkey server' });
+                console.error('Error writing to external servers:', err);
+                res.status(500).json({ error: 'Failed to send data to external servers' });
                 }
             });
 
@@ -1099,12 +1111,6 @@ app.get('/api/online', async(req, res) => {
     
 });
 
-
-
-
-
-
-
 app.post('/api/push_update', (req, res) => {
     // ADD DEVICE ID - checkedItems
     const {
@@ -1470,8 +1476,8 @@ app.post('/api/push_update', (req, res) => {
         
         client.write(hexBuffer, (err) => {
             if (err) {
-            console.error('Error writing to Henzkey server:', err);
-            res.status(500).json({ error: 'Failed to send data to Henzkey server' });
+            console.error('Error writing to external servers:', err);
+            res.status(500).json({ error: 'Failed to send data to external servers' });
             } else {
             res.status(200).json({ message: 'Update Received and Sent.' });
             }
@@ -1486,8 +1492,6 @@ app.post('/api/push_update', (req, res) => {
 // Handle device info update
 app.post('/api/update_device', (req, res) => {
     const { username, devices } = req.body;
-
-    console.log(req.body);
 
     if (!username || !devices || !Array.isArray(devices)) {
         return res.status(400).json({ error: 'Invalid request' });
