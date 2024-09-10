@@ -68,13 +68,6 @@ function insertLogEntry(onlineDevices, totalDevices) {
 }
 
 function log() {
-    // Function to calculate the time until the next hour
-    function timeUntilNextHour() {
-        const now = new Date();
-        const nextHour = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours() + 1, 0, 0, 0);
-        return nextHour - now;
-    }
-
     // Function to calculate the time until 1:30 AM Brisbane time
     function timeUntilNextRestart() {
         const now = new Date();
@@ -109,9 +102,12 @@ function log() {
         }).format(new Date());
     }
 
-    // Function to start logging at the exact hour
+    // Function to start logging
     function startLogging() {
-        setInterval(async () => {
+        const logInterval = 60 * 60 * 1000; // 1 hour
+
+        // Log immediately
+        async function logOnlineDevices() {
             const brisbaneTime = getBrisbaneTime();
             console.log(`--- Starting Online Devices Logging at ${brisbaneTime} ---`);
 
@@ -169,18 +165,22 @@ function log() {
                     updateDeviceOnline(label, false);
                 }
             });
-             
+
             // Insert log entry into the database
             insertLogEntry(onlineResult, deviceCount);  // Using `deviceCount` here
+        }
 
-        }, 60 * 60000); // Log every hour (60 minutes)
+        // Start logging immediately
+        logOnlineDevices();
+        // Set interval to log every hour
+        setInterval(logOnlineDevices, logInterval);
     }
 
     // Function to schedule handleRestart at 1:30 AM Brisbane time every day
     function scheduleDailyRestart() {
         const timeUntilRestart = timeUntilNextRestart();
         console.log(`Next scheduled soft restart in ${timeUntilRestart / 60000} minutes...`);
-        
+
         const devices = Array.from({ length: 32 }, (_, i) => `K${String(i + 1).padStart(2, '0')}`).join(',');
         const labels = devices.split(',');
 
@@ -209,22 +209,13 @@ function log() {
         }, timeUntilRestart);
     }
 
-    // Calculate milliseconds until the next hour
-    function msUntilNextHour() {
-        const now = new Date();
-        const nextHour = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours() + 1, 0, 0);
-        return nextHour - now;
-    }
+    // Start logging immediately and then every hour
+    startLogging();
 
-    // Wait until the next hour to start the logging
-    const initialTimeout = timeUntilNextHour();
-    console.log(`Next logging device online in ${initialTimeout / 60000} minutes...`);
-    setTimeout(() => {
-        startLogging();
-    }, initialTimeout);
-
+    // Schedule daily restart
     scheduleDailyRestart();
 }
+
 
 function handleRestart(labels, size, time) {
 
