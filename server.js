@@ -191,20 +191,27 @@ function log() {
     // Function to calculate the time until 1:30 AM Brisbane time
     function timeUntilNextRestart() {
         const now = new Date();
-        const currentTimeInBrisbane = new Date(now.toLocaleString('en-AU', { timeZone: 'Australia/Brisbane' }));
-
+        
+        // Create a Date object for the current time in Brisbane using UTC offset (AEST = UTC+10)
+        const brisbaneTimeOffset = 10 * 60; // UTC +10 hours
+        const currentTimeInBrisbane = new Date(now.getTime() + (brisbaneTimeOffset - now.getTimezoneOffset()) * 60000);
+    
+        // Set the next restart to 1:30 AM Brisbane time
         const nextRestart = new Date(
             currentTimeInBrisbane.getFullYear(),
             currentTimeInBrisbane.getMonth(),
             currentTimeInBrisbane.getDate(),
-            1, 30, 0, 0 // Set to 1:30 AM Brisbane time
+            1, 30, 0, 0 // 1:30 AM Brisbane time
         );
-
+    
+        // If it's already past 1:30 AM Brisbane time, set it for the next day
         if (currentTimeInBrisbane >= nextRestart) {
-            // If it's already past 1:30 AM, schedule for the next day
             nextRestart.setDate(nextRestart.getDate() + 1);
         }
-
+    
+        console.log('nextRestart: ', nextRestart);
+        console.log('currentTimeInBrisbane: ', currentTimeInBrisbane);
+        
         return nextRestart - currentTimeInBrisbane;
     }
 
