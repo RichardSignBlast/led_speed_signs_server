@@ -21,16 +21,24 @@ function parseDeviceMessage(message) {
 
 // Function to send registration response
 function sendRegistrationResponse(socket, deviceId) {
-  //const response = Buffer.from(`a5${deviceId}00e832ffed0110013002ae`, 'hex');
-  const response = Buffer.from(`a54350423431313032323300e832ffed0110013002ae`, 'hex');
+  const response = Buffer.from(`a5${deviceId}00e832ffed0110013002ae`, 'hex');
   socket.write(response);
   console.log('Sent registration response to device:', response.toString('hex'));
+}
+
+// Function to send recursive message
+function sendRecursiveMessage(socket) {
+  const message = Buffer.from('a54350423431313032323300e832017b0101000000506801ae', 'hex');
+  socket.write(message);
+  console.log('Sent recursive message to device:', message.toString('hex'));
 }
 
 // Create the server for clients to connect to
 const server = net.createServer((clientSocket) => {
   const clientInfo = `${clientSocket.remoteAddress}:${clientSocket.remotePort}`;
   console.log(`Client connected: ${clientInfo}`);
+
+  let intervalId;
 
   // Handle data from client
   clientSocket.on('data', (data) => {
@@ -51,6 +59,11 @@ const server = net.createServer((clientSocket) => {
       if (parsedMessage.deviceId === 'CPB4110223' && parsedMessage.password === '000000') {
         console.log(`Device ${parsedMessage.deviceId} registered successfully from ${clientInfo}`);
         sendRegistrationResponse(clientSocket, parsedMessage.deviceId + '00');
+        
+        // Start sending recursive messages
+        intervalId = setInterval(() => {
+          sendRecursiveMessage(clientSocket);
+        }, 5000);
       } else {
         console.log(`Invalid device ID or password from ${clientInfo}`);
         // You might want to send a different response for failed registration
@@ -63,11 +76,17 @@ const server = net.createServer((clientSocket) => {
   // Handle client disconnection
   clientSocket.on('close', () => {
     console.log(`Client disconnected: ${clientInfo}`);
+    if (intervalId) {
+      clearInterval(intervalId);
+    }
   });
 
   // Handle client errors
   clientSocket.on('error', (err) => {
     console.error(`Client socket error for ${clientInfo}:`, err.message);
+    if (intervalId) {
+      clearInterval(intervalId);
+    }
   });
 });
 
