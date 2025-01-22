@@ -26,7 +26,7 @@ function sendRegistrationResponse(socket, deviceId) {
     if (err) {
       console.error('Error sending registration response:', err);
     } else {
-      console.log('Sent registration response to device:', response.toString('hex'));
+      console.log('Sent registration response to device:', response);
     }
   });
 }
