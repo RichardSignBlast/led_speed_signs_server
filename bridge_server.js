@@ -21,7 +21,7 @@ function parseDeviceMessage(message) {
 
 // Function to send registration response
 function sendRegistrationResponse(socket, deviceId) {
-  const response = Buffer.from(`a5${deviceId}00e832ffed0110013002ae`, 'hex');
+  const response = Buffer.from(`a54350423431313032323300e832ffed0110013002ae`, 'hex');
   socket.write(response, (err) => {
     if (err) {
       console.error('Error sending registration response:', err);
