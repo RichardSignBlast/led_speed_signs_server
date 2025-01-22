@@ -13,24 +13,28 @@ let isShuttingDown = false;
 
 // Function to parse device messages
 function parseDeviceMessage(message) {
-  const regex = /CPB411(\d{4})h2.(GLGA)(\d{6})/;
-  const match = message.match(regex);
+  // Convert buffer to hex string to handle non-printable characters
+  const hexString = message.toString('hex');
+  
+  // Look for the pattern: CPB411 followed by 4 digits
+  const match = hexString.match(/4350423431312e2e2e2e(.*)/);
   if (match) {
+    const deviceId = 'CPB411' + match[1].substr(0, 8);
+    const password = match[1].substr(8, 12);
     return {
-      deviceId: `CPB411${match[1]}`,
-      projectName: match[2],
-      password: match[3],
-      fullMessage: message.trim()
+      deviceId: deviceId,
+      password: password,
+      fullMessage: hexString
     };
   }
   return null;
 }
 
-// Function to send heartbeat response
-function sendHeartbeatResponse(socket, deviceId) {
-  const response = `ACK:${deviceId}\n`;
+// Function to send registration response
+function sendRegistrationResponse(socket, success) {
+  const response = success ? '0\n' : '1\n';
   socket.write(response);
-  console.log('Sent heartbeat response:', response.trim());
+  console.log('Sent registration response:', response.trim());
 }
 
 // Function to connect to LED Controller with retry mechanism
@@ -65,31 +69,28 @@ const server = net.createServer((clientSocket) => {
 
   // Handle data from client
   clientSocket.on('data', (data) => {
-    const message = data.toString().trim();
-    console.log('Received from client:', message);
+    console.log('Received from client:', data.toString('hex'));
     
-    const parsedMessage = parseDeviceMessage(message);
+    const parsedMessage = parseDeviceMessage(data);
     if (parsedMessage) {
       console.log('Parsed message:', JSON.stringify(parsedMessage, null, 2));
       
-      // Validate password
-      if (parsedMessage.password === '000000') {
-        console.log('Password validated successfully');
-        sendHeartbeatResponse(clientSocket, parsedMessage.deviceId);
+      // Check registration (device ID and password)
+      if (parsedMessage.deviceId === 'CPB4110223' && parsedMessage.password === '000000') {
+        console.log('Device registered successfully');
+        sendRegistrationResponse(clientSocket, true);
         
         // Forward to LED controller if connected
         if (ledControllerSocket && ledControllerSocket.writable) {
-          const formattedMessage = `${parsedMessage.deviceId}:${parsedMessage.fullMessage}\n`;
-          ledControllerSocket.write(formattedMessage);
-          console.log('Forwarded to LED controller:', formattedMessage.trim());
+          ledControllerSocket.write(data);
+          console.log('Forwarded to LED controller');
         } else {
           console.log('LED controller socket not writable, buffering or handling locally');
           // Implement local handling or buffering here
         }
       } else {
-        console.log('Invalid password');
-        // Optionally, send an error response to the client
-        clientSocket.write('ERROR: Invalid password\n');
+        console.log('Invalid device ID or password');
+        sendRegistrationResponse(clientSocket, false);
       }
     } else {
       console.log('Unrecognized message format');
