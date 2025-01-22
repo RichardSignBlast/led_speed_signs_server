@@ -8,9 +8,14 @@ const CLIENT_HOST = '0.0.0.0';
 const LED_CONTROLLER_IP = '192.168.1.223';
 const LED_CONTROLLER_PORT = 5200;
 
+let ledControllerSocket = null;
+let isShuttingDown = false;
+
 // Function to connect to LED Controller with retry mechanism
 function connectToLEDController() {
-  const ledControllerSocket = new net.Socket();
+  if (isShuttingDown) return;
+
+  ledControllerSocket = new net.Socket();
 
   ledControllerSocket.connect(LED_CONTROLLER_PORT, LED_CONTROLLER_IP, () => {
     console.log('Connected to LED controller');
@@ -18,44 +23,38 @@ function connectToLEDController() {
 
   ledControllerSocket.on('error', (err) => {
     console.error('LED controller socket error:', err.message);
-    console.error('Error details:', err);
-    setTimeout(() => connectToLEDController(), 5000); // Retry after 5 seconds
+    ledControllerSocket.destroy();
   });
 
   ledControllerSocket.on('close', () => {
     console.log('LED controller connection closed. Attempting to reconnect...');
-    setTimeout(() => connectToLEDController(), 5000);
+    setTimeout(connectToLEDController, 5000);
   });
-
-  return ledControllerSocket;
 }
 
 // Create the server for clients to connect to
 const server = net.createServer((clientSocket) => {
   console.log('Client connected:', clientSocket.remoteAddress);
 
-  const ledControllerSocket = connectToLEDController();
+  // Ensure LED controller connection
+  if (!ledControllerSocket || ledControllerSocket.destroyed) {
+    connectToLEDController();
+  }
 
   // Forward data from client to LED controller
   clientSocket.on('data', (data) => {
     console.log('Received from client:', data.toString().trim());
-    if (ledControllerSocket.writable) {
+    if (ledControllerSocket && ledControllerSocket.writable) {
       ledControllerSocket.write(data);
     } else {
-      console.log('LED controller socket not writable');
+      console.log('LED controller socket not writable, buffering or handling locally');
+      // Here you could implement local handling or data buffering
     }
-  });
-
-  // Forward data from LED controller to client
-  ledControllerSocket.on('data', (data) => {
-    console.log('Received from LED controller:', data.toString().trim());
-    clientSocket.write(data);
   });
 
   // Handle client disconnection
   clientSocket.on('close', () => {
     console.log('Client disconnected:', clientSocket.remoteAddress);
-    ledControllerSocket.destroy();
   });
 
   // Handle client errors
@@ -67,6 +66,7 @@ const server = net.createServer((clientSocket) => {
 // Start the server
 server.listen(CLIENT_PORT, CLIENT_HOST, () => {
   console.log(`Server listening on ${CLIENT_HOST}:${CLIENT_PORT}`);
+  connectToLEDController(); // Initial connection attempt
 });
 
 // Handle server errors
@@ -76,9 +76,22 @@ server.on('error', (err) => {
 
 // Handle process termination
 process.on('SIGINT', () => {
+  isShuttingDown = true;
   console.log('Shutting down server...');
+  
+  // Close the LED controller socket if it exists
+  if (ledControllerSocket) {
+    ledControllerSocket.destroy();
+  }
+
   server.close(() => {
-    console.log('Server shut down');
+    console.log('Server shut down gracefully');
     process.exit(0);
   });
+
+  // Force shutdown after 5 seconds if not closed gracefully
+  setTimeout(() => {
+    console.log('Force shutting down...');
+    process.exit(1);
+  }, 5000);
 });
