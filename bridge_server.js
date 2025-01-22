@@ -13,17 +13,16 @@ let isShuttingDown = false;
 
 // Function to parse device messages
 function parseDeviceMessage(message) {
-  // Convert buffer to hex string to handle non-printable characters
   const hexString = message.toString('hex');
-  
-  // Look for the pattern: CPB411 followed by 4 digits
-  const match = hexString.match(/4350423431312e2e2e2e(.*)/);
+  console.log('Hex received:', hexString);
+
+  // Look for the pattern: a5 followed by the device MAC address
+  const match = hexString.match(/a5(4350423431313032323300)6832ffed0110(474c474100)(303030303030)/);
   if (match) {
-    const deviceId = 'CPB411' + match[1].substr(0, 8);
-    const password = match[1].substr(8, 12);
     return {
-      deviceId: deviceId,
-      password: password,
+      deviceId: Buffer.from(match[1], 'hex').toString().slice(0, -1), // Remove the last null byte
+      projectName: Buffer.from(match[2], 'hex').toString(),
+      password: Buffer.from(match[3], 'hex').toString(),
       fullMessage: hexString
     };
   }
@@ -31,10 +30,10 @@ function parseDeviceMessage(message) {
 }
 
 // Function to send registration response
-function sendRegistrationResponse(socket, success) {
-  const response = success ? '0\n' : '1\n';
+function sendRegistrationResponse(socket, deviceId) {
+  const response = Buffer.from(`a5${deviceId}00e832ffed0110013002ae`, 'hex');
   socket.write(response);
-  console.log('Sent registration response:', response.trim());
+  console.log('Sent registration response:', response.toString('hex'));
 }
 
 // Function to connect to LED Controller with retry mechanism
@@ -78,7 +77,7 @@ const server = net.createServer((clientSocket) => {
       // Check registration (device ID and password)
       if (parsedMessage.deviceId === 'CPB4110223' && parsedMessage.password === '000000') {
         console.log('Device registered successfully');
-        sendRegistrationResponse(clientSocket, true);
+        sendRegistrationResponse(clientSocket, parsedMessage.deviceId + '00');
         
         // Forward to LED controller if connected
         if (ledControllerSocket && ledControllerSocket.writable) {
@@ -90,7 +89,7 @@ const server = net.createServer((clientSocket) => {
         }
       } else {
         console.log('Invalid device ID or password');
-        sendRegistrationResponse(clientSocket, false);
+        // You might want to send a different response for failed registration
       }
     } else {
       console.log('Unrecognized message format');
