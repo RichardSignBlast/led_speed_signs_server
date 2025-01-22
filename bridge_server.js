@@ -10,7 +10,6 @@ function parseDeviceMessage(message) {
   const match = hexString.match(/a5(4350423431313032323300)6832ffed0110(474c474100)(303030303030)/);
   if (match) {
     return {
-      message: message,
       deviceId: Buffer.from(match[1], 'hex').toString().slice(0, -1), // Remove the last null byte
       projectName: Buffer.from(match[2], 'hex').toString(),
       password: Buffer.from(match[3], 'hex').toString(),
