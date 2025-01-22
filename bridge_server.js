@@ -4,13 +4,6 @@ const net = require('net');
 const CLIENT_PORT = 8080;
 const CLIENT_HOST = '0.0.0.0';
 
-// LED Controller configuration
-const LED_CONTROLLER_IP = '192.168.1.223';
-const LED_CONTROLLER_PORT = 5200;
-
-let ledControllerSocket = null;
-let isShuttingDown = false;
-
 // Function to parse device messages
 function parseDeviceMessage(message) {
   const hexString = message.toString('hex');
@@ -28,31 +21,9 @@ function parseDeviceMessage(message) {
 
 // Function to send registration response
 function sendRegistrationResponse(socket, deviceId) {
-  //const response = Buffer.from(`a5${deviceId}00e832ffed0110013002ae`, 'hex');
-  const response = Buffer.from(`a54350423431313032323300e832ffed0110013002ae`, 'hex');
+  const response = Buffer.from(`a5${deviceId}00e832ffed0110013002ae`, 'hex');
   socket.write(response);
-  console.log('Sent registration response to device:', response);
-}
-
-// Function to connect to LED Controller with retry mechanism
-function connectToLEDController() {
-  if (isShuttingDown) return;
-
-  ledControllerSocket = new net.Socket();
-
-  ledControllerSocket.connect(LED_CONTROLLER_PORT, LED_CONTROLLER_IP, () => {
-    console.log('Connected to LED controller');
-  });
-
-  ledControllerSocket.on('error', (err) => {
-    console.error('LED controller socket error:', err.message);
-    ledControllerSocket.destroy();
-  });
-
-  ledControllerSocket.on('close', () => {
-    console.log('LED controller connection closed. Attempting to reconnect...');
-    setTimeout(connectToLEDController, 5000);
-  });
+  console.log('Sent registration response to device:', response.toString('hex'));
 }
 
 // Create the server for clients to connect to
@@ -60,14 +31,9 @@ const server = net.createServer((clientSocket) => {
   const clientInfo = `${clientSocket.remoteAddress}:${clientSocket.remotePort}`;
   console.log(`Client connected: ${clientInfo}`);
 
-  // Ensure LED controller connection
-  if (!ledControllerSocket || ledControllerSocket.destroyed) {
-    connectToLEDController();
-  }
-
   // Handle data from client
   clientSocket.on('data', (data) => {
-    console.log(`Received data from client ${clientInfo}`);
+    console.log(`Received data from client ${clientInfo}:`, data.toString('hex'));
     
     // Check if it's an HTTP request
     if (data.toString().startsWith('GET') || data.toString().startsWith('POST')) {
@@ -84,15 +50,6 @@ const server = net.createServer((clientSocket) => {
       if (parsedMessage.deviceId === 'CPB4110223' && parsedMessage.password === '000000') {
         console.log(`Device ${parsedMessage.deviceId} registered successfully from ${clientInfo}`);
         sendRegistrationResponse(clientSocket, parsedMessage.deviceId + '00');
-        
-        // Forward to LED controller if connected
-        if (ledControllerSocket && ledControllerSocket.writable) {
-          ledControllerSocket.write(data);
-          console.log(`Forwarded message from ${clientInfo} to LED controller`);
-        } else {
-          console.log(`LED controller socket not writable, buffering or handling locally for ${clientInfo}`);
-          // Implement local handling or buffering here
-        }
       } else {
         console.log(`Invalid device ID or password from ${clientInfo}`);
         // You might want to send a different response for failed registration
@@ -116,7 +73,6 @@ const server = net.createServer((clientSocket) => {
 // Start the server
 server.listen(CLIENT_PORT, CLIENT_HOST, () => {
   console.log(`Server listening on ${CLIENT_HOST}:${CLIENT_PORT}`);
-  connectToLEDController(); // Initial connection attempt
 });
 
 // Handle server errors
@@ -126,14 +82,7 @@ server.on('error', (err) => {
 
 // Handle process termination
 process.on('SIGINT', () => {
-  isShuttingDown = true;
   console.log('Shutting down server...');
-  
-  // Close the LED controller socket if it exists
-  if (ledControllerSocket) {
-    ledControllerSocket.destroy();
-  }
-
   server.close(() => {
     console.log('Server shut down gracefully');
     process.exit(0);
