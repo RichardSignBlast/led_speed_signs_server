@@ -31,8 +31,7 @@ function parseDeviceMessage(message) {
 
 // Function to send registration response
 function sendRegistrationResponse(socket, deviceId) {
-    const response = Buffer.from(`a54350423431313032323300e832017b0101000000506801ae`, 'hex');
-  //const response = Buffer.from(`a54350423431313032323300e832ffed0110013002ae`, 'hex');
+  const response = Buffer.from(`a5${deviceId}00e832ffed0110013002ae`, 'hex');
   socket.write(response);
   console.log('Sent registration response:', response.toString('hex'));
 }
@@ -70,6 +69,13 @@ const server = net.createServer((clientSocket) => {
   // Handle data from client
   clientSocket.on('data', (data) => {
     console.log('Received from client:', data.toString('hex'));
+    
+    // Check if it's an HTTP request
+    if (data.toString().startsWith('GET') || data.toString().startsWith('POST')) {
+      console.log('Received HTTP request, ignoring');
+      clientSocket.end('HTTP/1.1 200 OK\r\n\r\nOK');
+      return;
+    }
     
     const parsedMessage = parseDeviceMessage(data);
     if (parsedMessage) {
