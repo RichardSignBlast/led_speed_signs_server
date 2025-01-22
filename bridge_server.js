@@ -14,9 +14,6 @@ let isShuttingDown = false;
 // Function to parse device messages
 function parseDeviceMessage(message) {
   const hexString = message.toString('hex');
-  console.log('Hex received:', hexString);
-
-  // Look for the pattern: a5 followed by the device MAC address
   const match = hexString.match(/a5(4350423431313032323300)6832ffed0110(474c474100)(303030303030)/);
   if (match) {
     return {
@@ -33,7 +30,7 @@ function parseDeviceMessage(message) {
 function sendRegistrationResponse(socket, deviceId) {
   const response = Buffer.from(`a5${deviceId}00e832ffed0110013002ae`, 'hex');
   socket.write(response);
-  console.log('Sent registration response:', response.toString('hex'));
+  console.log('Sent registration response to device');
 }
 
 // Function to connect to LED Controller with retry mechanism
@@ -59,7 +56,8 @@ function connectToLEDController() {
 
 // Create the server for clients to connect to
 const server = net.createServer((clientSocket) => {
-  console.log('Client connected:', clientSocket.remoteAddress);
+  const clientInfo = `${clientSocket.remoteAddress}:${clientSocket.remotePort}`;
+  console.log(`Client connected: ${clientInfo}`);
 
   // Ensure LED controller connection
   if (!ledControllerSocket || ledControllerSocket.destroyed) {
@@ -68,49 +66,49 @@ const server = net.createServer((clientSocket) => {
 
   // Handle data from client
   clientSocket.on('data', (data) => {
-    console.log('Received from client:', data.toString('hex'));
+    console.log(`Received data from client ${clientInfo}`);
     
     // Check if it's an HTTP request
     if (data.toString().startsWith('GET') || data.toString().startsWith('POST')) {
-      console.log('Received HTTP request, ignoring');
+      console.log(`Received HTTP request from ${clientInfo}, ignoring`);
       clientSocket.end('HTTP/1.1 200 OK\r\n\r\nOK');
       return;
     }
     
     const parsedMessage = parseDeviceMessage(data);
     if (parsedMessage) {
-      console.log('Parsed message:', JSON.stringify(parsedMessage, null, 2));
+      console.log(`Parsed message from ${clientInfo}:`, JSON.stringify(parsedMessage, null, 2));
       
       // Check registration (device ID and password)
       if (parsedMessage.deviceId === 'CPB4110223' && parsedMessage.password === '000000') {
-        console.log('Device registered successfully');
+        console.log(`Device ${parsedMessage.deviceId} registered successfully from ${clientInfo}`);
         sendRegistrationResponse(clientSocket, parsedMessage.deviceId + '00');
         
         // Forward to LED controller if connected
         if (ledControllerSocket && ledControllerSocket.writable) {
           ledControllerSocket.write(data);
-          console.log('Forwarded to LED controller');
+          console.log(`Forwarded message from ${clientInfo} to LED controller`);
         } else {
-          console.log('LED controller socket not writable, buffering or handling locally');
+          console.log(`LED controller socket not writable, buffering or handling locally for ${clientInfo}`);
           // Implement local handling or buffering here
         }
       } else {
-        console.log('Invalid device ID or password');
+        console.log(`Invalid device ID or password from ${clientInfo}`);
         // You might want to send a different response for failed registration
       }
     } else {
-      console.log('Unrecognized message format');
+      console.log(`Unrecognized message format from ${clientInfo}`);
     }
   });
 
   // Handle client disconnection
   clientSocket.on('close', () => {
-    console.log('Client disconnected:', clientSocket.remoteAddress);
+    console.log(`Client disconnected: ${clientInfo}`);
   });
 
   // Handle client errors
   clientSocket.on('error', (err) => {
-    console.error('Client socket error:', err.message);
+    console.error(`Client socket error for ${clientInfo}:`, err.message);
   });
 });
 
