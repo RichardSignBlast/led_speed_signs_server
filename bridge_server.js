@@ -4,25 +4,14 @@ const net = require('net');
 const CLIENT_PORT = 8080;
 const CLIENT_HOST = '0.0.0.0';
 
-function sendRegistrationResponse(socket, receivedData) {
-  // Convert the first 11 bytes (device name) to a string
-  const deviceName = receivedData.slice(1, 12).toString('ascii').replace(/\0+$/, '');
+function sendRegistrationResponse(socket, clientInfo) {
+  const response = Buffer.from('a54350423431313032323300e832ffed0010012f02ae', 'hex');
 
-  const responseData = Buffer.from([
-    0xa5,  // Start byte
-    ...receivedData.slice(1, 12),  // Device name with null terminator
-    0xe8, 0x32, 0xff, 0xed, 0x01, 0x10,  // Fixed part
-    ...receivedData.slice(18, 23),  // Project name
-    ...receivedData.slice(23, 29),  // Password
-    ...receivedData.slice(1, 12),  // Repeat device name
-    0x04, 0x07, 0xae  // Checksum and end byte
-  ]);
-
-  socket.write(responseData, (err) => {
+  socket.write(response, (err) => {
     if (err) {
-      console.error('Error sending registration response:', err);
+      console.error(`Error sending registration response to ${clientInfo}:`, err);
     } else {
-      console.log('Sent registration response to device:', responseData.toString('hex'));
+      console.log(`${clientInfo} <- ${CLIENT_HOST}:${CLIENT_PORT}: ${response.toString('hex')}`);
     }
   });
 }
@@ -34,10 +23,10 @@ const server = net.createServer((clientSocket) => {
 
   // Handle data from client
   clientSocket.on('data', (data) => {
-    console.log(`Received data from client ${clientInfo}:`, data.toString('hex'));
+    console.log(`${clientInfo} -> ${CLIENT_HOST}:${CLIENT_PORT}: ${data.toString('hex')}`);
     
     // Send response immediately without any checks
-    sendRegistrationResponse(clientSocket, data);
+    sendRegistrationResponse(clientSocket, clientInfo);
   });
 
   // Handle client disconnection
