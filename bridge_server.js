@@ -51,10 +51,8 @@ function generatePacket(deviceId, boardId, command, additional, payload) {
 }
 
 function sendResponse(socket, clientInfo, receivedData) {
-    const messageType = receivedData[15].toString(16).padStart(2, '0').toUpperCase();
+    const messageType = receivedData[17].toString(16).padStart(2, '0').toUpperCase();
     const deviceId = receivedData.slice(1, 12).toString('hex');
-
-    console.log(messageType); // debug
 
     let response;
     if (messageType === '10') {  // Registration message
