@@ -4,29 +4,25 @@ const net = require('net');
 const CLIENT_PORT = 8080;
 const CLIENT_HOST = '0.0.0.0';
 
-// Function to parse device messages
-function parseDeviceMessage(message) {
-  const hexString = message.toString('hex');
-  const match = hexString.match(/a5(4350423431313032323300)6832ffed0110(474c474100)(303030303030)/);
-  if (match) {
-    return message; /*{
-      deviceId: Buffer.from(match[1], 'hex').toString().slice(0, -1), // Remove the last null byte
-      projectName: Buffer.from(match[2], 'hex').toString(),
-      password: Buffer.from(match[3], 'hex').toString(),
-      fullMessage: hexString
-    };*/
-  }
-  return null;
-}
+function sendRegistrationResponse(socket, receivedData) {
+  // Convert the first 11 bytes (device name) to a string
+  const deviceName = receivedData.slice(1, 12).toString('ascii').replace(/\0+$/, '');
 
-// Function to send registration response
-function sendRegistrationResponse(socket, deviceId) {
-  const response = Buffer.from(`a54350423431313032323300e832ffed0010012f02ae`, 'hex');
-  socket.write(response, (err) => {
+  const responseData = Buffer.from([
+    0xa5,  // Start byte
+    ...receivedData.slice(1, 12),  // Device name with null terminator
+    0xe8, 0x32, 0xff, 0xed, 0x01, 0x10,  // Fixed part
+    ...receivedData.slice(18, 23),  // Project name
+    ...receivedData.slice(23, 29),  // Password
+    ...receivedData.slice(1, 12),  // Repeat device name
+    0x04, 0x07, 0xae  // Checksum and end byte
+  ]);
+
+  socket.write(responseData, (err) => {
     if (err) {
       console.error('Error sending registration response:', err);
     } else {
-      console.log('Sent registration response to device:', response);
+      console.log('Sent registration response to device:', responseData.toString('hex'));
     }
   });
 }
@@ -40,28 +36,8 @@ const server = net.createServer((clientSocket) => {
   clientSocket.on('data', (data) => {
     console.log(`Received data from client ${clientInfo}:`, data.toString('hex'));
     
-    // Check if it's an HTTP request
-    if (data.toString().startsWith('GET') || data.toString().startsWith('POST')) {
-      console.log(`Received HTTP request from ${clientInfo}, ignoring`);
-      clientSocket.end('HTTP/1.1 200 OK\r\n\r\nOK');
-      return;
-    }
-    
-    const parsedMessage = parseDeviceMessage(data);
-    if (parsedMessage) {
-      console.log(`Parsed message from ${clientInfo}:`, JSON.stringify(parsedMessage, null, 2));
-      
-      // Check registration (device ID and password)
-      if (parsedMessage.deviceId === 'CPB4110223' && parsedMessage.password === '000000') {
-        console.log(`Device ${parsedMessage.deviceId} attempting registration from ${clientInfo}`);
-        sendRegistrationResponse(clientSocket, parsedMessage.deviceId + '00');
-      } else {
-        console.log(`Invalid device ID or password from ${clientInfo}`);
-        // You might want to send a different response for failed registration
-      }
-    } else {
-      console.log(`Unrecognized message format from ${clientInfo}`);
-    }
+    // Send response immediately without any checks
+    sendRegistrationResponse(clientSocket, data);
   });
 
   // Handle client disconnection
