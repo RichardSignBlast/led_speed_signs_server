@@ -33,7 +33,6 @@ function generatePacket(deviceId, boardId, command, additional, payload) {
     const packet = [
         'A5',       // Head
         ...deviceId,
-        '00',       // Null terminator for device ID
         boardId,    // Board ID (e8 for response)
         '32',       // Board Type
         'FF',       // Fixed
@@ -59,7 +58,8 @@ function sendResponse(socket, clientInfo, receivedData) {
         response = 'a54350423431313032323300e832ffed0010001603ae';
     } else if (messageType === '12') {  // Heartbeat message
         const heartbeatIndex = receivedData[17].toString(16).padStart(2, '0').toUpperCase();
-        response = generatePacket(deviceId, 'E8', '12', heartbeatIndex, []);
+        // response = generatePacket(deviceId, 'E8', '12', heartbeatIndex, []);
+        response = 'a543504234313130323233006832017b0101000000506801ae';
     }
 
     socket.write(Buffer.from(response, 'hex'), (err) => {
