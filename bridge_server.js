@@ -5,7 +5,7 @@ const CLIENT_PORT = 8080;
 const CLIENT_HOST = '0.0.0.0';
 
 function sendRegistrationResponse(socket, clientInfo) {
-  const response = Buffer.from('a54350423431313032323300e832ffed01100031fdae', 'hex');
+  const response = Buffer.from('a54350423431313032323300e832ffed0010009602ae', 'hex');
 
   socket.write(response, (err) => {
     if (err) {
