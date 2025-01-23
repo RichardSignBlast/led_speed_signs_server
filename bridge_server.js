@@ -57,6 +57,11 @@ function generatePacket(deviceId, boardId, command, additional, payload) {
 }
 
 function sendResponse(socket, clientInfo, receivedData) {
+    if (receivedData.length < 16) {
+        console.log(`${clientInfo} -> ${HOST}:${TCP_PORT}: Received short message (possibly broadcast): ${receivedData.toString('hex')}`);
+        return; // Don't respond to short messages
+    }
+
     const messageType = receivedData[15].toString(16).padStart(2, '0').toUpperCase();
     const deviceId = receivedData.slice(1, 12).toString('hex');
 
@@ -66,6 +71,9 @@ function sendResponse(socket, clientInfo, receivedData) {
     } else if (messageType === '12') {  // Heartbeat message
         const heartbeatIndex = receivedData[17].toString(16).padStart(2, '0').toUpperCase();
         response = generatePacket(deviceId, 'E8', '12', heartbeatIndex, []);
+    } else {
+        console.log(`${clientInfo} -> ${HOST}:${TCP_PORT}: Received unknown message type: ${messageType}`);
+        return; // Don't respond to unknown message types
     }
 
     socket.write(Buffer.from(response, 'hex'), (err) => {
@@ -89,8 +97,11 @@ const tcpServer = net.createServer((clientSocket) => {
     clientSocket.on('data', (data) => {
         console.log(`${clientInfo} -> ${HOST}:${TCP_PORT}: ${data.toString('hex')}`);
         
-        // Send response based on the received message
-        sendResponse(clientSocket, clientInfo, data);
+        try {
+            sendResponse(clientSocket, clientInfo, data);
+        } catch (error) {
+            console.error(`Error processing message from ${clientInfo}:`, error);
+        }
     });
 
     // Handle client disconnection
