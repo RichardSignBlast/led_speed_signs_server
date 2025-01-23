@@ -1,8 +1,14 @@
 const net = require('net');
+const http = require('http');
+const url = require('url');
 
 // Server configuration
-const CLIENT_PORT = 8080;
-const CLIENT_HOST = '0.0.0.0';
+const TCP_PORT = 8080;
+const HTTP_PORT = 3000;
+const HOST = '0.0.0.0';
+
+// Store connected clients
+const connectedClients = new Map();
 
 function calculateChecksums(data) {
     const numericData = data.map(byte => {
@@ -33,6 +39,7 @@ function generatePacket(deviceId, boardId, command, additional, payload) {
     const packet = [
         'A5',       // Head
         ...deviceId,
+        '00',       // Null terminator for device ID
         boardId,    // Board ID (e8 for response)
         '32',       // Board Type
         'FF',       // Fixed
@@ -50,7 +57,7 @@ function generatePacket(deviceId, boardId, command, additional, payload) {
 }
 
 function sendResponse(socket, clientInfo, receivedData) {
-    const messageType = receivedData[17].toString(16).padStart(2, '0').toUpperCase();
+    const messageType = receivedData[15].toString(16).padStart(2, '0').toUpperCase();
     const deviceId = receivedData.slice(1, 12).toString('hex');
 
     let response;
@@ -58,28 +65,29 @@ function sendResponse(socket, clientInfo, receivedData) {
         response = 'a54350423431313032323300e832ffed0010001603ae';
     } else if (messageType === '12') {  // Heartbeat message
         const heartbeatIndex = receivedData[17].toString(16).padStart(2, '0').toUpperCase();
-        // response = generatePacket(deviceId, 'E8', '12', heartbeatIndex, []);
-        response = 'a543504234313130323233006832017b0101000000506801ae';
+        response = generatePacket(deviceId, 'E8', '12', heartbeatIndex, []);
     }
 
     socket.write(Buffer.from(response, 'hex'), (err) => {
         if (err) {
             console.error(`Error sending response to ${clientInfo}:`, err);
         } else {
-            console.log(`${clientInfo} <- ${CLIENT_HOST}:${CLIENT_PORT}: ${response}`);
+            console.log(`${clientInfo} <- ${HOST}:${TCP_PORT}: ${response}`);
         }
     });
 }
 
-
-// Create the server for clients to connect to
-const server = net.createServer((clientSocket) => {
+// Create the TCP server for devices to connect to
+const tcpServer = net.createServer((clientSocket) => {
     const clientInfo = `${clientSocket.remoteAddress}:${clientSocket.remotePort}`;
     console.log(`Client connected: ${clientInfo}`);
 
+    // Store the client connection
+    connectedClients.set(clientInfo, clientSocket);
+
     // Handle data from client
     clientSocket.on('data', (data) => {
-        console.log(`${clientInfo} -> ${CLIENT_HOST}:${CLIENT_PORT}: ${data.toString('hex')}`);
+        console.log(`${clientInfo} -> ${HOST}:${TCP_PORT}: ${data.toString('hex')}`);
         
         // Send response based on the received message
         sendResponse(clientSocket, clientInfo, data);
@@ -88,30 +96,87 @@ const server = net.createServer((clientSocket) => {
     // Handle client disconnection
     clientSocket.on('close', () => {
         console.log(`Client disconnected: ${clientInfo}`);
+        connectedClients.delete(clientInfo);
     });
 
     // Handle client errors
     clientSocket.on('error', (err) => {
         console.error(`Client socket error for ${clientInfo}:`, err.message);
+        connectedClients.delete(clientInfo);
     });
 });
 
-// Start the server
-server.listen(CLIENT_PORT, CLIENT_HOST, () => {
-    console.log(`Server listening on ${CLIENT_HOST}:${CLIENT_PORT}`);
+// Create the HTTP server for receiving POST requests
+const httpServer = http.createServer((req, res) => {
+    if (req.method === 'POST' && req.url === '/send') {
+        let body = '';
+        req.on('data', chunk => {
+            body += chunk.toString();
+        });
+        req.on('end', () => {
+            try {
+                const { deviceId, message } = JSON.parse(body);
+                const client = Array.from(connectedClients.entries()).find(([_, socket]) => {
+                    return socket.remoteAddress === deviceId;
+                });
+
+                if (client) {
+                    const [clientInfo, socket] = client;
+                    const hexMessage = Buffer.from(message, 'hex');
+                    socket.write(hexMessage, (err) => {
+                        if (err) {
+                            console.error(`Error sending message to ${clientInfo}:`, err);
+                            res.writeHead(500);
+                            res.end('Error sending message to device');
+                        } else {
+                            console.log(`${clientInfo} <- ${HOST}:${TCP_PORT}: ${message}`);
+                            res.writeHead(200);
+                            res.end('Message sent successfully');
+                        }
+                    });
+                } else {
+                    res.writeHead(404);
+                    res.end('Device not found');
+                }
+            } catch (error) {
+                console.error('Error processing POST request:', error);
+                res.writeHead(400);
+                res.end('Invalid request');
+            }
+        });
+    } else {
+        res.writeHead(404);
+        res.end('Not found');
+    }
+});
+
+// Start the TCP server
+tcpServer.listen(TCP_PORT, HOST, () => {
+    console.log(`TCP Server listening on ${HOST}:${TCP_PORT}`);
+});
+
+// Start the HTTP server
+httpServer.listen(HTTP_PORT, HOST, () => {
+    console.log(`HTTP Server listening on ${HOST}:${HTTP_PORT}`);
 });
 
 // Handle server errors
-server.on('error', (err) => {
-    console.error('Server error:', err.message);
+tcpServer.on('error', (err) => {
+    console.error('TCP Server error:', err.message);
+});
+
+httpServer.on('error', (err) => {
+    console.error('HTTP Server error:', err.message);
 });
 
 // Handle process termination
 process.on('SIGINT', () => {
-    console.log('Shutting down server...');
-    server.close(() => {
-        console.log('Server shut down gracefully');
-        process.exit(0);
+    console.log('Shutting down servers...');
+    tcpServer.close(() => {
+        httpServer.close(() => {
+            console.log('Servers shut down gracefully');
+            process.exit(0);
+        });
     });
 
     // Force shutdown after 5 seconds if not closed gracefully
