@@ -21,21 +21,37 @@ function calculateChecksums(data) {
 }
 
 function parseDeviceMessage(message) {
-  const hexString = message.toString('hex');
-  const match = hexString.match(/a5([\da-f]{22})(6832ffed0110)(474c474100)(303030303030)([\da-f]{22})([\da-f]{4})ae/);
-  if (match) {
-    return {
-      deviceName: Buffer.from(match[1], 'hex').toString().replace(/\0+$/, ''),
-      fixedPart: match[2],
-      projectName: Buffer.from(match[3], 'hex').toString(),
-      password: Buffer.from(match[4], 'hex').toString(),
-      repeatedDeviceName: Buffer.from(match[5], 'hex').toString().replace(/\0+$/, ''),
-      checksum: match[6],
-      fullMessage: hexString
-    };
+    const hexString = message.toString('hex');
+    console.log("Received hex string:", hexString);
+  
+    // More flexible regex pattern
+    const pattern = /a5([\da-f]{22})(6832ffed0110)([\da-f]{10})([\da-f]{12})([\da-f]{22})([\da-f]{4})ae/i;
+    const match = hexString.match(pattern);
+  
+    if (match) {
+      return {
+        deviceName: Buffer.from(match[1], 'hex').toString().replace(/\0+$/, ''),
+        fixedPart: match[2],
+        projectName: Buffer.from(match[3], 'hex').toString(),
+        password: Buffer.from(match[4], 'hex').toString(),
+        repeatedDeviceName: Buffer.from(match[5], 'hex').toString().replace(/\0+$/, ''),
+        checksum: match[6],
+        fullMessage: hexString
+      };
+    } else {
+      console.log("Regex did not match. Message structure:");
+      console.log("Start byte:", hexString.slice(0, 2));
+      console.log("Device name:", hexString.slice(2, 24));
+      console.log("Fixed part:", hexString.slice(24, 36));
+      console.log("Project name:", hexString.slice(36, 46));
+      console.log("Password:", hexString.slice(46, 58));
+      console.log("Repeated device name:", hexString.slice(58, 80));
+      console.log("Checksum:", hexString.slice(80, 84));
+      console.log("End byte:", hexString.slice(84));
+    }
+    return null;
   }
-  return null;
-}
+  
 
 function sendRegistrationResponse(socket, deviceName) {
   const deviceNameBuffer = Buffer.from(deviceName);
