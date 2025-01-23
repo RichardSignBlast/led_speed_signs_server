@@ -54,6 +54,8 @@ function sendResponse(socket, clientInfo, receivedData) {
     const messageType = receivedData[15].toString(16).padStart(2, '0').toUpperCase();
     const deviceId = receivedData.slice(1, 12).toString('hex');
 
+    console.log(messageType); // debug
+
     let response;
     if (messageType === '10') {  // Registration message
         response = 'a54350423431313032323300e832ffed0010001603ae';
