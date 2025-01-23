@@ -104,7 +104,8 @@ const tcpServer = net.createServer((clientSocket) => {
 
     // Handle data from client
     clientSocket.on('data', (data) => {
-        console.log(`${clientInfo} -> ${HOST}:${TCP_PORT}: ${data.toString('hex')}`);
+        const timestamp = getTimestamp();
+        console.log(`[${timestamp}]${clientInfo} -> ${HOST}:${TCP_PORT}: ${data.toString('hex')}`);
         
         try {
             sendResponse(clientSocket, clientInfo, data);
