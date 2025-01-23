@@ -5,7 +5,7 @@ const url = require('url');
 // Server configuration
 const TCP_PORT = 8080;
 const HTTP_PORT = 3000;
-const HOST = '20.42.206.190';
+const HOST = '0.0.0.0';
 
 // Store connected clients
 const connectedClients = new Map();
