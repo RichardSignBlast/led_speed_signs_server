@@ -51,13 +51,13 @@ function generatePacket(deviceId, boardId, command, additional, payload) {
 }
 
 function sendResponse(socket, clientInfo, receivedData) {
-    const messageType = receivedData[15];
+    const messageType = receivedData[15].toString(16).padStart(2, '0').toUpperCase();
     const deviceId = receivedData.slice(1, 12).toString('hex');
 
     let response;
-    if (messageType === 0x68) {  // Registration message
-        response = Buffer.from('a54350423431313032323300e832ffed0010001603ae', 'hex');
-    } else if (messageType === 0x12) {  // Heartbeat message
+    if (messageType === '10') {  // Registration message
+        response = 'a54350423431313032323300e832ffed0010001603ae';
+    } else if (messageType === '12') {  // Heartbeat message
         const heartbeatIndex = receivedData[17].toString(16).padStart(2, '0').toUpperCase();
         response = generatePacket(deviceId, 'E8', '12', heartbeatIndex, []);
     }
@@ -70,6 +70,7 @@ function sendResponse(socket, clientInfo, receivedData) {
         }
     });
 }
+
 
 // Create the server for clients to connect to
 const server = net.createServer((clientSocket) => {
