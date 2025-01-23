@@ -78,7 +78,8 @@ function sendResponse(socket, clientInfo, receivedData) {
         const heartbeatIndex = receivedData[19].toString(16).padStart(2, '0').toUpperCase();
         response = generatePacket(deviceId, 'E8', '12', heartbeatIndex, []);
     } else {
-        console.log(`${clientInfo} -> ${HOST}:${TCP_PORT}: Received unknown message type: ${messageType}`);
+        const timestamp = getTimestamp();
+        console.log(`[${timestamp}]${clientInfo} -> ${HOST}:${TCP_PORT}: Received unknown message type: ${messageType}`);
         return; // Don't respond to unknown message types
     }
 
