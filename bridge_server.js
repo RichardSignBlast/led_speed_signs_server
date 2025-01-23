@@ -4,84 +4,29 @@ const net = require('net');
 const CLIENT_PORT = 8080;
 const CLIENT_HOST = '0.0.0.0';
 
-function calculateChecksums(data) {
-    const cleanedData = data.flatMap(item => {
-        if (typeof item === 'string') {
-            return item.split(/\s+/).filter(part => part.length > 0);
-        }
-        return item;
-    });
-
-    const numericData = cleanedData.map(byte => parseInt(byte, 16) & 0xFF);
-    const sum = numericData.reduce((sum, byte) => (sum + byte) & 0xFFFF, 0);
-    const low = sum & 0xFF;
-    const high = (sum >> 8) & 0xFF;
-  
-    return `${low.toString(16).padStart(2, '0').toUpperCase()} ${high.toString(16).padStart(2, '0').toUpperCase()}`;
+// Function to parse device messages
+function parseDeviceMessage(message) {
+  const hexString = message.toString('hex');
+  const match = hexString.match(/a5(4350423431313032323300)6832ffed0110(474c474100)(303030303030)/);
+  if (match) {
+    return {
+      deviceId: Buffer.from(match[1], 'hex').toString().slice(0, -1), // Remove the last null byte
+      projectName: Buffer.from(match[2], 'hex').toString(),
+      password: Buffer.from(match[3], 'hex').toString(),
+      fullMessage: hexString
+    };
+  }
+  return null;
 }
 
-function parseDeviceMessage(message) {
-    const hexString = message.toString('hex');
-    console.log("Received hex string:", hexString);
-  
-    // More flexible regex pattern
-    const pattern = /a5([\da-f]{22})(6832ffed0110)([\da-f]{10})([\da-f]{12})([\da-f]{22})([\da-f]{4})ae/i;
-    const match = hexString.match(pattern);
-  
-    if (match) {
-      return {
-        deviceName: Buffer.from(match[1], 'hex').toString().replace(/\0+$/, ''),
-        fixedPart: match[2],
-        projectName: Buffer.from(match[3], 'hex').toString(),
-        password: Buffer.from(match[4], 'hex').toString(),
-        repeatedDeviceName: Buffer.from(match[5], 'hex').toString().replace(/\0+$/, ''),
-        checksum: match[6],
-        fullMessage: hexString
-      };
-    } else {
-      console.log("Regex did not match. Message structure:");
-      console.log("Start byte:", hexString.slice(0, 2));
-      console.log("Device name:", hexString.slice(2, 24));
-      console.log("Fixed part:", hexString.slice(24, 36));
-      console.log("Project name:", hexString.slice(36, 46));
-      console.log("Password:", hexString.slice(46, 58));
-      console.log("Repeated device name:", hexString.slice(58, 80));
-      console.log("Checksum:", hexString.slice(80, 84));
-      console.log("End byte:", hexString.slice(84));
-    }
-    return null;
-  }
-  
-
-function sendRegistrationResponse(socket, deviceName) {
-  const deviceNameBuffer = Buffer.from(deviceName);
-  const fixedPart = [0xe8, 0x32, 0xff, 0xed, 0x01, 0x10];
-  const projectName = Buffer.from('GLGA\0');
-  const password = Buffer.from('000000');
-  
-  const responseData = [
-    0xa5,  // Start byte
-    ...deviceNameBuffer, 0x00,  // Device name with null terminator
-    ...fixedPart,
-    ...projectName,
-    ...password,
-    ...deviceNameBuffer, 0x00,  // Repeat device name with null terminator
-  ];
-
-  // Calculate checksum for data from '32' to the end (excluding checksum and end byte)
-  const checksumData = responseData.slice(responseData.indexOf(0x32));
-  const checksum = calculateChecksums(checksumData.map(b => (typeof b === 'number' ? b : b.readUInt8(0)).toString(16).padStart(2, '0')));
-  const [checksumLow, checksumHigh] = checksum.split(' ').map(b => parseInt(b, 16));
-
-  responseData.push(checksumLow, checksumHigh, 0xae);  // Add checksum and end byte
-
-  const response = Buffer.from(responseData);
-
+// Function to send registration response
+function sendRegistrationResponse(socket, deviceId) {
+  const response = Buffer.from(`a54350423431313032323300e832ffed0010013002ae`, 'hex');
   socket.write(response, (err) => {
     if (err) {
       console.error('Error sending registration response:', err);
     } else {
-      console.log('Sent registration response to device:', response.toString('hex'));
+      console.log('Sent registration response to device:', response);
     }
   });
 }
@@ -106,9 +51,14 @@ const server = net.createServer((clientSocket) => {
     if (parsedMessage) {
       console.log(`Parsed message from ${clientInfo}:`, JSON.stringify(parsedMessage, null, 2));
       
-      // Use the device name for registration
-      console.log(`Device ${parsedMessage.deviceName} attempting registration from ${clientInfo}`);
-      sendRegistrationResponse(clientSocket, parsedMessage.deviceName);
+      // Check registration (device ID and password)
+      if (parsedMessage.deviceId === 'CPB4110223' && parsedMessage.password === '000000') {
+        console.log(`Device ${parsedMessage.deviceId} attempting registration from ${clientInfo}`);
+        sendRegistrationResponse(clientSocket, parsedMessage.deviceId + '00');
+      } else {
+        console.log(`Invalid device ID or password from ${clientInfo}`);
+        // You might want to send a different response for failed registration
+      }
     } else {
       console.log(`Unrecognized message format from ${clientInfo}`);
     }
