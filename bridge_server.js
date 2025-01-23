@@ -5,7 +5,7 @@ const url = require('url');
 // Server configuration
 const TCP_PORT = 8080;
 const HTTP_PORT = 3000;
-const HOST = '0.0.0.0';
+const HOST = '20.42.206.190';
 
 // Store connected clients
 const connectedClients = new Map();
@@ -56,9 +56,15 @@ function generatePacket(deviceId, boardId, command, additional, payload) {
     return packet.join('');
 }
 
+
+function getTimestamp() {
+    return new Date().toISOString();
+}
+
 function sendResponse(socket, clientInfo, receivedData) {
     if (receivedData.length < 16) {
-        console.log(`${clientInfo} -> ${HOST}:${TCP_PORT}: Received short message (possibly broadcast): ${receivedData.toString('hex')}`);
+        const timestamp = getTimestamp();
+        console.log(`[${timestamp}] ${clientInfo} -> ${HOST}:${TCP_PORT}: Received short message (possibly broadcast): ${receivedData.toString('hex')}`);
         return; // Don't respond to short messages
     }
 
@@ -80,7 +86,8 @@ function sendResponse(socket, clientInfo, receivedData) {
         if (err) {
             console.error(`Error sending response to ${clientInfo}:`, err);
         } else {
-            console.log(`${clientInfo} <- ${HOST}:${TCP_PORT}: ${response}`);
+            const timestamp = getTimestamp();
+            console.log(`[${timestamp}]${clientInfo} <- ${HOST}:${TCP_PORT}: ${response}`);
         }
     });
 }
@@ -88,7 +95,8 @@ function sendResponse(socket, clientInfo, receivedData) {
 // Create the TCP server for devices to connect to
 const tcpServer = net.createServer((clientSocket) => {
     const clientInfo = `${clientSocket.remoteAddress}:${clientSocket.remotePort}`;
-    console.log(`Client connected: ${clientInfo}`);
+    const timestamp = getTimestamp();
+    console.log(`[${timestamp}]Client connected: ${clientInfo}`);
 
     // Store the client connection
     connectedClients.set(clientInfo, clientSocket);
@@ -106,7 +114,8 @@ const tcpServer = net.createServer((clientSocket) => {
 
     // Handle client disconnection
     clientSocket.on('close', () => {
-        console.log(`Client disconnected: ${clientInfo}`);
+        const timestamp = getTimestamp();
+        console.log(`[[${timestamp}]Client disconnected: ${clientInfo}`);
         connectedClients.delete(clientInfo);
     });
 
