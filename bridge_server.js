@@ -5,7 +5,7 @@ const bodyParser = require('body-parser');
 // Server configuration
 const TCP_PORT = 8080;
 const TCP_HOST = '0.0.0.0';
-const HTTP_PORT = 3000;
+const HTTP_PORT = 3001;
 
 function getTimestamp() {
     return new Date().toISOString();
