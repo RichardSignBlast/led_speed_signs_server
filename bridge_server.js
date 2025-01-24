@@ -63,14 +63,14 @@ function sendResponse(socket, clientInfo, receivedData) {
         return; // Don't respond to short messages
     }
 
-    const messageType = receivedData[15].toString(16).padStart(2, '0').toUpperCase();
+    const messageType = receivedData[17].toString(16).padStart(2, '0').toUpperCase();
     const deviceId = receivedData.slice(1, 12).toString('hex');
 
     let response;
     if (messageType === '10') {  // Registration message
         response = 'a54350423431313032323300e832ffed0010001603ae';
     } else if (messageType === '12') {  // Heartbeat message
-        const heartbeatIndex = receivedData[17].toString(16).padStart(2, '0').toUpperCase();
+        const heartbeatIndex = receivedData[19].toString(16).padStart(2, '0').toUpperCase();
         response = generatePacket(deviceId, 'E8', '12', heartbeatIndex, []);
     } else {
         console.log(`${getTimestamp()} ${clientInfo} -> ${TCP_HOST}:${TCP_PORT}: Received unknown message type: ${messageType}`);
