@@ -1,14 +1,15 @@
 const net = require('net');
-const http = require('http');
-const url = require('url');
+const express = require('express');
+const bodyParser = require('body-parser');
 
 // Server configuration
 const TCP_PORT = 8080;
+const TCP_HOST = '0.0.0.0';
 const HTTP_PORT = 3000;
-const HOST = '0.0.0.0';
 
-// Store connected clients
-const connectedClients = new Map();
+function getTimestamp() {
+    return new Date().toISOString();
+}
 
 function calculateChecksums(data) {
     const numericData = data.map(byte => {
@@ -56,149 +57,116 @@ function generatePacket(deviceId, boardId, command, additional, payload) {
     return packet.join('');
 }
 
-
-function getTimestamp() {
-    return new Date().toISOString();
-}
-
 function sendResponse(socket, clientInfo, receivedData) {
     if (receivedData.length < 16) {
-        const timestamp = getTimestamp();
-        console.log(`[${timestamp}] ${clientInfo} -> ${HOST}:${TCP_PORT}: Received short message (possibly broadcast): ${receivedData.toString('hex')}`);
+        console.log(`${getTimestamp()} ${clientInfo} -> ${TCP_HOST}:${TCP_PORT}: Received short message (possibly broadcast): ${receivedData.toString('hex')}`);
         return; // Don't respond to short messages
     }
 
-    const messageType = receivedData[17].toString(16).padStart(2, '0').toUpperCase();
+    const messageType = receivedData[15].toString(16).padStart(2, '0').toUpperCase();
     const deviceId = receivedData.slice(1, 12).toString('hex');
 
     let response;
     if (messageType === '10') {  // Registration message
         response = 'a54350423431313032323300e832ffed0010001603ae';
     } else if (messageType === '12') {  // Heartbeat message
-        const heartbeatIndex = receivedData[19].toString(16).padStart(2, '0').toUpperCase();
+        const heartbeatIndex = receivedData[17].toString(16).padStart(2, '0').toUpperCase();
         response = generatePacket(deviceId, 'E8', '12', heartbeatIndex, []);
     } else {
-        const timestamp = getTimestamp();
-        console.log(`[${timestamp}]${clientInfo} -> ${HOST}:${TCP_PORT}: Received unknown message type: ${messageType}`);
+        console.log(`${getTimestamp()} ${clientInfo} -> ${TCP_HOST}:${TCP_PORT}: Received unknown message type: ${messageType}`);
         return; // Don't respond to unknown message types
     }
 
     socket.write(Buffer.from(response, 'hex'), (err) => {
         if (err) {
-            console.error(`Error sending response to ${clientInfo}:`, err);
+            console.error(`${getTimestamp()} Error sending response to ${clientInfo}:`, err);
         } else {
-            const timestamp = getTimestamp();
-            console.log(`[${timestamp}]${clientInfo} <- ${HOST}:${TCP_PORT}: ${response}`);
+            console.log(`${getTimestamp()} ${clientInfo} <- ${TCP_HOST}:${TCP_PORT}: ${response}`);
         }
     });
 }
 
-// Create the TCP server for devices to connect to
+// Store connected clients
+const clients = new Set();
+
+// Create the TCP server for clients to connect to
 const tcpServer = net.createServer((clientSocket) => {
     const clientInfo = `${clientSocket.remoteAddress}:${clientSocket.remotePort}`;
-    const timestamp = getTimestamp();
-    console.log(`[${timestamp}]Client connected: ${clientInfo}`);
-
-    // Store the client connection
-    connectedClients.set(clientInfo, clientSocket);
+    console.log(`${getTimestamp()} Client connected: ${clientInfo}`);
+    
+    clients.add(clientSocket);
 
     // Handle data from client
     clientSocket.on('data', (data) => {
-        const timestamp = getTimestamp();
-        console.log(`[${timestamp}]${clientInfo} -> ${HOST}:${TCP_PORT}: ${data.toString('hex')}`);
+        console.log(`${getTimestamp()} ${clientInfo} -> ${TCP_HOST}:${TCP_PORT}: ${data.toString('hex')}`);
         
         try {
             sendResponse(clientSocket, clientInfo, data);
         } catch (error) {
-            console.error(`Error processing message from ${clientInfo}:`, error);
+            console.error(`${getTimestamp()} Error processing message from ${clientInfo}:`, error);
         }
     });
 
     // Handle client disconnection
     clientSocket.on('close', () => {
-        const timestamp = getTimestamp();
-        console.log(`[[${timestamp}]Client disconnected: ${clientInfo}`);
-        connectedClients.delete(clientInfo);
+        console.log(`${getTimestamp()} Client disconnected: ${clientInfo}`);
+        clients.delete(clientSocket);
     });
 
     // Handle client errors
     clientSocket.on('error', (err) => {
-        console.error(`Client socket error for ${clientInfo}:`, err.message);
-        connectedClients.delete(clientInfo);
+        console.error(`${getTimestamp()} Client socket error for ${clientInfo}:`, err.message);
+        clients.delete(clientSocket);
     });
 });
 
-// Create the HTTP server for receiving POST requests
-const httpServer = http.createServer((req, res) => {
-    if (req.method === 'POST' && req.url === '/send') {
-        let body = '';
-        req.on('data', chunk => {
-            body += chunk.toString();
-        });
-        req.on('end', () => {
-            try {
-                const { deviceId, message } = JSON.parse(body);
-                const client = Array.from(connectedClients.entries()).find(([_, socket]) => {
-                    return socket.remoteAddress === deviceId;
-                });
-
-                if (client) {
-                    const [clientInfo, socket] = client;
-                    const hexMessage = Buffer.from(message, 'hex');
-                    socket.write(hexMessage, (err) => {
-                        if (err) {
-                            console.error(`Error sending message to ${clientInfo}:`, err);
-                            res.writeHead(500);
-                            res.end('Error sending message to device');
-                        } else {
-                            console.log(`${clientInfo} <- ${HOST}:${TCP_PORT}: ${message}`);
-                            res.writeHead(200);
-                            res.end('Message sent successfully');
-                        }
-                    });
-                } else {
-                    res.writeHead(404);
-                    res.end('Device not found');
-                }
-            } catch (error) {
-                console.error('Error processing POST request:', error);
-                res.writeHead(400);
-                res.end('Invalid request');
-            }
-        });
-    } else {
-        res.writeHead(404);
-        res.end('Not found');
-    }
+// Start the TCP server
+tcpServer.listen(TCP_PORT, TCP_HOST, () => {
+    console.log(`${getTimestamp()} TCP Server listening on ${TCP_HOST}:${TCP_PORT}`);
 });
 
-// Start the TCP server
-tcpServer.listen(TCP_PORT, HOST, () => {
-    console.log(`TCP Server listening on ${HOST}:${TCP_PORT}`);
+// Create the HTTP server using Express
+const app = express();
+app.use(bodyParser.text({ type: '*/*' }));
+
+// POST route for sending messages to all connected clients
+app.post('/send', (req, res) => {
+    const message = req.body;
+    console.log(`${getTimestamp()} Received POST request with message: ${message}`);
+    
+    if (!/^[0-9A-Fa-f]+$/.test(message)) {
+        return res.status(400).json({ error: 'Invalid hexadecimal message' });
+    }
+
+    const buffer = Buffer.from(message, 'hex');
+    
+    clients.forEach(client => {
+        client.write(buffer, (err) => {
+            if (err) {
+                console.error(`${getTimestamp()} Error sending message to client:`, err);
+            } else {
+                console.log(`${getTimestamp()} Message sent to client: ${client.remoteAddress}:${client.remotePort}`);
+            }
+        });
+    });
+
+    res.json({ message: 'Message sent to all connected clients', clientCount: clients.size });
 });
 
 // Start the HTTP server
-httpServer.listen(HTTP_PORT, HOST, () => {
-    console.log(`HTTP Server listening on ${HOST}:${HTTP_PORT}`);
+app.listen(HTTP_PORT, () => {
+    console.log(`${getTimestamp()} HTTP Server listening on port ${HTTP_PORT}`);
 });
 
-// Handle server errors
-tcpServer.on('error', (err) => {
-    console.error('TCP Server error:', err.message);
-});
-
-httpServer.on('error', (err) => {
-    console.error('HTTP Server error:', err.message);
-});
-
-// Handle process termination
+// Handle process termination for both servers
 process.on('SIGINT', () => {
     console.log('Shutting down servers...');
     tcpServer.close(() => {
-        httpServer.close(() => {
-            console.log('Servers shut down gracefully');
-            process.exit(0);
-        });
+        console.log('TCP Server shut down gracefully');
+    });
+    app.close(() => {
+        console.log('HTTP Server shut down gracefully');
+        process.exit(0);
     });
 
     // Force shutdown after 5 seconds if not closed gracefully
